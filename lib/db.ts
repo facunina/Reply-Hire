@@ -211,6 +211,23 @@ export async function obtenerCandidato(id: string): Promise<Candidato | null> {
   return deserializar(data);
 }
 
+/** Postulaciones de una cuenta de candidato (más recientes primero). Sólo los
+ *  campos que el propio candidato puede ver: no incluye score ni análisis de la IA. */
+export async function obtenerPostulacionesDeUsuario(usuarioId: string): Promise<
+  { id: string; puesto: string; puesto_id: string | null; estado: string; creado_a: string }[]
+> {
+  const { data, error } = await getSupabase()
+    .from(TABLA)
+    .select('id, puesto, puesto_id, estado, creado_a')
+    .eq('usuario_id', usuarioId)
+    .order('creado_a', { ascending: false });
+
+  if (error) {
+    throw new Error('No se pudieron leer las postulaciones de Supabase: ' + error.message);
+  }
+  return data || [];
+}
+
 /** Indica si una cuenta de candidato ya se postuló a un puesto determinado. */
 export async function yaSePostulo(usuarioId: string, puestoId: string): Promise<boolean> {
   const { count, error } = await getSupabase()

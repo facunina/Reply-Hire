@@ -189,12 +189,20 @@ export default function PostularPage() {
                 Recibimos tu CV para <span className="font-semibold text-slate-900">{puesto.nombre}</span>. Te vamos a
                 responder a {cuenta?.email}.
               </p>
-              <Link
-                href="/#busquedas"
-                className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors"
-              >
-                Ver más búsquedas
-              </Link>
+              <div className="space-y-2">
+                <Link
+                  href="/mi-cuenta"
+                  className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors"
+                >
+                  Ver mis postulaciones
+                </Link>
+                <Link
+                  href="/#busquedas"
+                  className="w-full flex justify-center py-2.5 px-4 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:border-brand-500 hover:text-brand-700 transition-colors"
+                >
+                  Ver más búsquedas
+                </Link>
+              </div>
             </div>
           )}
 

@@ -48,7 +48,14 @@ export default function AuthNav() {
 
   return (
     <span className="flex items-center gap-2">
-      <span className="hidden max-w-[10rem] truncate text-sm font-semibold text-slate-900 sm:block">Hola, {nombre}</span>
+      <Link
+        href="/mi-cuenta"
+        className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        title="Mi cuenta"
+      >
+        <span className="hidden max-w-[10rem] truncate sm:inline">Hola, {nombre}</span>
+        <span className="sm:hidden">Mi cuenta</span>
+      </Link>
       <button
         type="button"
         onClick={salir}

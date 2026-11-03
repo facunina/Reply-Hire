@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import AccionesPuesto from "@/components/AccionesPuesto";
 import { obtenerPuesto } from "@/lib/db";
 import { normalizarArea } from "@/lib/areas";
 
@@ -33,7 +34,6 @@ export default async function PuestoPage({ params }: { params: Promise<{ id: str
         timeZone: "America/Montevideo",
       })
     : null;
-  const hrefPostular = `/postular?puesto=${puesto.id}`;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-900">
@@ -71,12 +71,7 @@ export default async function PuestoPage({ params }: { params: Promise<{ id: str
               <p className="mt-2 text-sm leading-relaxed text-slate-600">
                 Postulate subiendo tu CV en PDF. Te lleva un par de minutos y siempre vas a recibir una respuesta.
               </p>
-              <Link
-                href={hrefPostular}
-                className="mt-5 flex w-full justify-center rounded-xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700"
-              >
-                Postularme
-              </Link>
+              <AccionesPuesto puestoId={puesto.id as string} />
               <dl className="mt-6 space-y-3 border-t border-slate-200 pt-5 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Área</dt>

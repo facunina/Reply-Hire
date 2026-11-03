@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { destinoEmail } from '@/lib/email';
 import { Resend } from 'resend';
 import { analizarJSON, evaluarJSON, generarTexto } from '@/lib/ai';
@@ -271,38 +271,42 @@ export async function POST(request: Request) {
     }
 
     // ── Email de confirmación de recepción al candidato ───────────────────────
-    // Todo dentro de su propio try/catch: si falla (IA, Resend, red), NO debe
-    // romper la respuesta de la postulación, que ya se guardó con éxito.
-    try {
-      let textoConfirmacion: string;
+    // Se manda con after(): corre DESPUÉS de responder, así el candidato no
+    // espera a que la IA redacte el mail ni a que Resend lo envíe. Va dentro de
+    // su propio try/catch: si falla (IA, Resend, red) la postulación ya quedó
+    // guardada igual.
+    after(async () => {
       try {
-        textoConfirmacion = await generarTexto(
-          PROMPT_CONFIRMACION(candidato.nombre, candidato.puesto)
-        );
-      } catch (genError) {
-        console.error("No se pudo generar el texto de confirmación con IA:", genError);
-        textoConfirmacion =
-          "Hola " + candidato.nombre +
-          ", queríamos informarte que recibimos tu CV con éxito. Lo evaluaremos y te contactaremos con novedades. ¡Gracias por postularte!";
-      }
+        let textoConfirmacion: string;
+        try {
+          textoConfirmacion = await generarTexto(
+            PROMPT_CONFIRMACION(candidato.nombre, candidato.puesto)
+          );
+        } catch (genError) {
+          console.error("No se pudo generar el texto de confirmación con IA:", genError);
+          textoConfirmacion =
+            "Hola " + candidato.nombre +
+            ", queríamos informarte que recibimos tu CV con éxito. Lo evaluaremos y te contactaremos con novedades. ¡Gracias por postularte!";
+        }
 
-      const apiKey = process.env.RESEND_API_KEY;
-      if (apiKey && apiKey !== "REEMPLAZAR" && candidato.email && candidato.email.includes("@")) {
-        const resend = new Resend(apiKey);
-        const { error: sendError } = await resend.emails.send({
-          from: 'ReplyHire <onboarding@resend.dev>',
-          ...destinoEmail(candidato.email, "Recibimos tu postulación — " + candidato.puesto),
-          html: `<div style="font-family: Arial, sans-serif; line-height:1.6; color:#333;">
-            <p>${textoConfirmacion.replace(/\n/g, '<br>')}</p>
-            <p style="margin-top:20px; color:#888;">El equipo de ReplyHire</p>
-          </div>`,
-        });
-        await registrarEvento("email_confirmacion", candidato.email, { conexion: "email", exito: !sendError });
+        const apiKey = process.env.RESEND_API_KEY;
+        if (apiKey && apiKey !== "REEMPLAZAR" && candidato.email && candidato.email.includes("@")) {
+          const resend = new Resend(apiKey);
+          const { error: sendError } = await resend.emails.send({
+            from: 'ReplyHire <onboarding@resend.dev>',
+            ...destinoEmail(candidato.email, "Recibimos tu postulación — " + candidato.puesto),
+            html: `<div style="font-family: Arial, sans-serif; line-height:1.6; color:#333;">
+              <p>${textoConfirmacion.replace(/\n/g, '<br>')}</p>
+              <p style="margin-top:20px; color:#888;">El equipo de ReplyHire</p>
+            </div>`,
+          });
+          await registrarEvento("email_confirmacion", candidato.email, { conexion: "email", exito: !sendError });
+        }
+      } catch (emailError) {
+        console.error("No se pudo enviar el email de confirmación:", emailError);
+        await registrarEvento("email_confirmacion", candidato.email, { conexion: "email", exito: false });
       }
-    } catch (emailError) {
-      console.error("No se pudo enviar el email de confirmación:", emailError);
-      await registrarEvento("email_confirmacion", candidato.email, { conexion: "email", exito: false });
-    }
+    });
 
     return NextResponse.json({ ok: true, candidato });
 

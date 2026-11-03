@@ -38,8 +38,25 @@ const MODELOS = {
 
 type Tarea = keyof (typeof MODELOS)["gemini"];
 
-// Modelos de Gemini a los que se pasa si el principal está saturado (503/429).
-const MODELOS_RESPALDO_GEMINI = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-flash-lite-latest"];
+// Modelos de Gemini a los que se pasa si el principal está saturado o no
+// responde. Primero los "lite": son los que más disponibilidad tienen en el
+// tier gratuito y responden en 1–2 segundos.
+const MODELOS_RESPALDO_GEMINI = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.8-flash"];
+
+// Tiempo máximo por llamada a Gemini. Un modelo saturado a veces no devuelve
+// error sino que se queda colgado indefinidamente; pasado este tiempo se corta
+// y se prueba el siguiente.
+const TIMEOUT_GEMINI_MS = 20_000;
+
+// Cuando un modelo falla por saturación o timeout, se lo saltea durante este
+// tiempo. Así las 3 llamadas de una misma postulación (extracción, scoring y
+// mail) no vuelven a esperar al mismo modelo caído.
+const ENFRIAMIENTO_MS = 5 * 60_000;
+const modeloCaidoHasta = new Map<string, number>();
+
+function modeloDisponible(modelo: string): boolean {
+  return (modeloCaidoHasta.get(modelo) || 0) < Date.now();
+}
 
 // Los modelos Flash de Gemini "piensan" antes de responder y ese razonamiento
 // consume del límite de tokens de salida; se usa un techo más alto para que la
@@ -134,39 +151,41 @@ async function llamarModelo(
   json: boolean
 ): Promise<string> {
   if (proveedor() === "gemini") {
-    // El tier gratuito devuelve 503/429 con frecuencia en picos de demanda:
-    // se reintenta con backoff y, si el modelo sigue saturado, se pasa al de respaldo.
-    const modelos = [MODELOS.gemini[tarea], ...MODELOS_RESPALDO_GEMINI.filter((m) => m !== MODELOS.gemini[tarea])];
+    // El tier gratuito devuelve 503/429 o se queda colgado en picos de demanda:
+    // se prueba cada modelo UNA vez (con timeout) y se pasa al siguiente. Los
+    // modelos que acaban de fallar se dejan para el final.
+    const candidatos = [MODELOS.gemini[tarea], ...MODELOS_RESPALDO_GEMINI.filter((m) => m !== MODELOS.gemini[tarea])];
+    const modelos = [...candidatos.filter(modeloDisponible), ...candidatos.filter((m) => !modeloDisponible(m))];
     let ultimoError: unknown;
     for (const nombreModelo of modelos) {
-      for (let intento = 0; intento < 2; intento++) {
-        try {
-          const model = getGemini().getGenerativeModel({
+      const inicio = Date.now();
+      try {
+        const model = getGemini().getGenerativeModel(
+          {
             model: nombreModelo,
             ...(json ? { systemInstruction: SYSTEM_JSON } : {}),
             generationConfig: {
               maxOutputTokens: MAX_TOKENS_GEMINI,
               ...(json ? { responseMimeType: "application/json" } : {}),
             },
-          });
-          const result = await model.generateContent(prompt);
-          const texto = result.response.text();
-          if (!texto) {
-            throw new Error("La respuesta de Gemini no contenía texto.");
-          }
-          return texto;
-        } catch (error) {
-          ultimoError = error;
-          const msg = error instanceof Error ? error.message : String(error);
-          // Modelo retirado o no habilitado para esta key → se pasa directo al siguiente.
-          if (/\b404\b|no longer available|not found/i.test(msg)) {
-            console.warn(`Gemini ${nombreModelo} no disponible; probando el siguiente modelo…`);
-            break;
-          }
-          if (!/\b(503|429|500)\b|high demand|overloaded|unavailable/i.test(msg)) throw error;
-          console.warn(`Gemini ${nombreModelo} saturado (intento ${intento + 1}); reintentando…`);
-          await new Promise((r) => setTimeout(r, 1500 * (intento + 1)));
+          },
+          { timeout: TIMEOUT_GEMINI_MS }
+        );
+        const result = await model.generateContent(prompt);
+        const texto = result.response.text();
+        if (!texto) {
+          throw new Error("La respuesta de Gemini no contenía texto.");
         }
+        console.log(`Gemini ${nombreModelo} (${tarea}) respondió en ${Date.now() - inicio} ms`);
+        return texto;
+      } catch (error) {
+        ultimoError = error;
+        const msg = error instanceof Error ? error.message : String(error);
+        const recuperable =
+          /\b(404|429|500|503)\b|high demand|overloaded|unavailable|no longer available|not found|timeout|timed out|abort/i.test(msg);
+        if (!recuperable) throw error;
+        modeloCaidoHasta.set(nombreModelo, Date.now() + ENFRIAMIENTO_MS);
+        console.warn(`Gemini ${nombreModelo} falló tras ${Date.now() - inicio} ms (${msg.slice(0, 80)}); probando el siguiente…`);
       }
     }
     throw ultimoError;
