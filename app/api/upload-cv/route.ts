@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { destinoEmail } from '@/lib/email';
 import { Resend } from 'resend';
 import { analizarJSON, evaluarJSON, generarTexto } from '@/lib/ai';
-import { guardarCandidato, subirCV, obtenerPuesto } from '@/lib/db';
+import { guardarCandidato, subirCV, obtenerPuesto, yaSePostulo } from '@/lib/db';
+import { usuarioDesdeRequest } from '@/lib/auth-candidato';
 import {
   PROMPT_EXTRACCION,
   PROMPT_SCORING,
@@ -16,14 +17,32 @@ import { randomUUID } from 'crypto';
 
 const pdfParse = require('pdf-parse/lib/pdf-parse')
 
+// Largo máximo del mensaje que el candidato le deja al reclutador.
+const MENSAJE_MAX = 1000;
+
 export async function POST(request: Request) {
   try {
+    // Postularse exige una cuenta de candidato (Supabase Auth). El email sale
+    // de la sesión validada, no de lo que mande el formulario.
+    const usuario = await usuarioDesdeRequest(request);
+    if (!usuario) {
+      return NextResponse.json(
+        { error: "Para postularte tenés que iniciar sesión con tu cuenta." },
+        { status: 401 }
+      );
+    }
+
     const formData = await request.formData();
     const cv = formData.get('cv');
-    const nombre = formData.get('nombre') as string | null;
-    const email = formData.get('email') as string | null;
-    const telefono = formData.get('telefono') as string | null;
+    // Nombre, email y teléfono salen de la cuenta: el formulario ya no los pide.
+    const nombre = usuario.nombre.trim();
+    const email = usuario.email;
+    const telefono = usuario.telefono.trim();
     const puestoId = formData.get('puesto_id') as string | null;
+    // Mensaje opcional para el reclutador. Es texto libre del candidato: se
+    // guarda y se le muestra al reclutador, pero NO se le pasa a la IA (así no
+    // puede usarse para manipular el puntaje).
+    const mensaje = ((formData.get('mensaje') as string | null) || "").trim().slice(0, MENSAJE_MAX);
 
     // VALIDACIONES
     if (!cv || !(cv instanceof File)) {
@@ -38,8 +57,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El archivo supera el tamaño máximo de 10MB." }, { status: 400 });
     }
 
-    if (!email || !email.includes('@')) {
-      return NextResponse.json({ error: "Ingresá un email válido." }, { status: 400 });
+    // Una misma cuenta no puede postularse dos veces a la misma búsqueda. Se
+    // verifica antes de gastar llamadas a la IA.
+    if (puestoId) {
+      let repetida = false;
+      try {
+        repetida = await yaSePostulo(usuario.id, puestoId);
+      } catch (e) {
+        // Si el id no es un uuid válido o la consulta falla, no bloqueamos acá:
+        // más abajo se valida el puesto contra la tabla.
+        console.warn("No se pudo verificar postulación repetida:", e);
+      }
+      if (repetida) {
+        return NextResponse.json({ error: "Ya te postulaste a esta búsqueda." }, { status: 409 });
+      }
     }
 
     // Extracción de texto del PDF
@@ -198,6 +229,8 @@ export async function POST(request: Request) {
       telefono: telefono || "",
       puesto: puestoNombre,
       puesto_id: puestoIdGuardado,
+      usuario_id: usuario.id,
+      mensaje,
       cv_texto: texto.substring(0, 3000),
       cv_url,
       score: score,

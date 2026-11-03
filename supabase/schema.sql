@@ -9,6 +9,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.puestos (
   id             uuid primary key default gen_random_uuid(),
   nombre         text not null default '',
+  area           text not null default 'Otros',   -- sección del portal (lib/areas.ts)
   sobre_nosotros text default '',
   mision         text default '',
   actividades    text default '',
@@ -19,6 +20,9 @@ create table if not exists public.puestos (
   created_at     timestamptz not null default now()
 );
 
+-- Bases creadas antes de que existiera la columna `area`.
+alter table public.puestos add column if not exists area text not null default 'Otros';
+
 -- ─── Tabla candidatos ────────────────────────────────────────────────────────
 -- Estados: pendiente → en_entrevista → seleccionado | rechazado_cv | rechazado_entrevista
 create table if not exists public.candidatos (
@@ -28,7 +32,9 @@ create table if not exists public.candidatos (
   telefono          text default '',
   puesto            text default '',
   puesto_id         uuid references public.puestos(id) on delete set null,
+  usuario_id        uuid references auth.users(id) on delete set null,  -- cuenta del candidato (Supabase Auth)
   posible_inyeccion boolean not null default false,
+  mensaje           text default '',   -- texto libre del candidato para el reclutador
   cv_texto          text default '',
   cv_url            text default '',
   score             numeric default 0,
@@ -40,6 +46,11 @@ create table if not exists public.candidatos (
   guardado          boolean not null default false,
   creado_a          timestamptz not null default now()
 );
+
+-- Bases creadas antes de que existiera la columna `usuario_id`.
+alter table public.candidatos add column if not exists usuario_id uuid references auth.users(id) on delete set null;
+alter table public.candidatos add column if not exists mensaje text default '';
+create index if not exists candidatos_usuario_id_idx on public.candidatos (usuario_id);
 
 create index if not exists candidatos_creado_a_idx on public.candidatos (creado_a desc);
 create index if not exists candidatos_puesto_id_idx on public.candidatos (puesto_id);
@@ -83,9 +94,10 @@ create policy "cvs_update_anon" on storage.objects
   for update to anon, authenticated using (bucket_id = 'cvs') with check (bucket_id = 'cvs');
 
 -- ─── Puesto de ejemplo (opcional, para poder postular apenas se levanta) ────
-insert into public.puestos (nombre, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios)
+insert into public.puestos (nombre, area, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios)
 select
   'Desarrollador/a Full Stack Jr',
+  'Tecnología',
   'Somos una startup uruguaya de tecnología para RRHH.',
   'Construir y mantener las funcionalidades de nuestra plataforma web.',
   'Desarrollar features en Next.js/React; crear APIs; escribir tests; participar en code reviews.',

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PUESTOS, PUESTO_POR_DEFECTO } from "@/lib/puestos";
+import { AREAS, AREA_POR_DEFECTO } from "@/lib/areas";
 
 interface Candidato {
   id: string;
@@ -19,6 +20,7 @@ interface Candidato {
   estado: string;
   feedback: string;
   posible_inyeccion?: boolean;
+  mensaje?: string;
   guardado?: boolean;
   creado_a?: string;
   fecha_postulacion: string;
@@ -40,6 +42,7 @@ interface Puesto {
 // Formulario de creación de puesto en blanco (las 7 secciones de la búsqueda).
 const PUESTO_VACIO = {
   nombre: "",
+  area: AREA_POR_DEFECTO as string,
   sobre_nosotros: "",
   mision: "",
   actividades: "",
@@ -658,6 +661,14 @@ export default function DashboardPage() {
                 </span>
               </div>
 
+              {/* Mensaje que el candidato dejó al postularse (texto libre, no pasa por la IA) */}
+              {seleccionado.mensaje && seleccionado.mensaje.trim() && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">Mensaje del candidato</h4>
+                  <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{seleccionado.mensaje.trim()}</p>
+                </div>
+              )}
+
               {/* Strengths & Weaknesses */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Strengths */}
@@ -890,6 +901,25 @@ export default function DashboardPage() {
                   placeholder="Ej.: Analista de Marketing Digital"
                   className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm text-slate-900"
                 />
+              </div>
+
+              {/* Área: define en qué sección del portal público aparece la búsqueda */}
+              <div>
+                <label htmlFor="np-area" className="block text-sm font-medium text-slate-700">
+                  Área <span className="text-slate-400 font-normal">— sección del portal donde se muestra</span>
+                </label>
+                <select
+                  id="np-area"
+                  value={nuevoPuesto.area}
+                  onChange={(e) => setNuevoPuesto({ ...nuevoPuesto, area: e.target.value })}
+                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm text-slate-900 bg-white"
+                >
+                  {AREAS.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* 2. Sobre Nosotros */}

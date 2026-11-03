@@ -37,7 +37,9 @@ export interface Candidato {
   telefono?: string;
   puesto?: string;
   puesto_id?: string | null;
+  usuario_id?: string | null;   // cuenta (Supabase Auth) del candidato que se postuló
   posible_inyeccion?: boolean;
+  mensaje?: string;             // texto libre que el candidato le deja al reclutador
   cv_texto?: string;
   cv_url?: string;
   score?: number;
@@ -72,7 +74,9 @@ const COLUMNAS = [
   'telefono',
   'puesto',
   'puesto_id',
+  'usuario_id',
   'posible_inyeccion',
+  'mensaje',
   'cv_texto',
   'cv_url',
   'score',
@@ -132,7 +136,9 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
   // FK al puesto (uuid). Si viene vacío lo guardamos como null para no romper
   // la columna de tipo uuid.
   if (c.puesto_id !== undefined) fila.puesto_id = c.puesto_id || null;
+  if (c.usuario_id !== undefined) fila.usuario_id = c.usuario_id || null;
   if (c.posible_inyeccion !== undefined) fila.posible_inyeccion = !!c.posible_inyeccion;
+  if (c.mensaje !== undefined) fila.mensaje = c.mensaje || '';
   if (c.cv_texto !== undefined) fila.cv_texto = c.cv_texto || '';
   if (c.cv_url !== undefined) fila.cv_url = c.cv_url || '';
   if (c.score !== undefined) {
@@ -205,6 +211,20 @@ export async function obtenerCandidato(id: string): Promise<Candidato | null> {
   return deserializar(data);
 }
 
+/** Indica si una cuenta de candidato ya se postuló a un puesto determinado. */
+export async function yaSePostulo(usuarioId: string, puestoId: string): Promise<boolean> {
+  const { count, error } = await getSupabase()
+    .from(TABLA)
+    .select('id', { count: 'exact', head: true })
+    .eq('usuario_id', usuarioId)
+    .eq('puesto_id', puestoId);
+
+  if (error) {
+    throw new Error('No se pudo verificar la postulación en Supabase: ' + error.message);
+  }
+  return (count ?? 0) > 0;
+}
+
 /** Aplica cambios parciales a un candidato existente. */
 export async function actualizarCandidato(
   id: string,
@@ -269,6 +289,7 @@ export async function subirCV(id: string, buffer: Buffer): Promise<string> {
 export interface Puesto {
   id?: string;
   nombre: string;            // 1. Título del puesto (claro y directo)
+  area?: string;             // Área / sección del portal (ver lib/areas.ts)
   sobre_nosotros?: string;   // 2. Sobre nosotros (propuesta de cultura)
   mision?: string;           // 3. Misión del puesto (el "para qué")
   actividades?: string;      // 4. Responsabilidades y tareas (¿qué hará?)
@@ -287,6 +308,7 @@ export interface Puesto {
 export async function guardarPuesto(p: Puesto): Promise<Puesto> {
   const fila: Record<string, any> = {
     nombre: p.nombre || '',
+    area: p.area || 'Otros',
     sobre_nosotros: p.sobre_nosotros || '',
     mision: p.mision || '',
     actividades: p.actividades || '',
@@ -301,7 +323,7 @@ export async function guardarPuesto(p: Puesto): Promise<Puesto> {
   // Columnas opcionales que pueden no existir si falta la migración. El id,
   // nombre, actividades, requisitos y salario son del esquema original y no se
   // descartan: si fallan, es un error real.
-  const descartables = new Set(['sobre_nosotros', 'mision', 'modalidad', 'beneficios']);
+  const descartables = new Set(['area', 'sobre_nosotros', 'mision', 'modalidad', 'beneficios']);
 
   for (let intento = 0; intento < 6; intento++) {
     const { data, error } = await getSupabase()

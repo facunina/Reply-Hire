@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { guardarPuesto, obtenerPuestos } from '@/lib/db';
 import { registrarEvento } from '@/lib/eventos';
+import { normalizarArea } from '@/lib/areas';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El cuerpo de la solicitud debe ser un JSON válido." }, { status: 400 });
     }
 
-    const { nombre, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios } = body;
+    const { nombre, area, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios } = body;
 
     if (!nombre || typeof nombre !== "string" || nombre.trim() === "") {
       return NextResponse.json({ error: "El nombre del puesto es obligatorio." }, { status: 400 });
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
     const puesto = await guardarPuesto({
       id,
       nombre: nombre.trim(),
+      area: normalizarArea(area),
       sobre_nosotros: limpiar(sobre_nosotros),
       mision: limpiar(mision),
       actividades: limpiar(actividades),
