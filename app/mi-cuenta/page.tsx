@@ -15,6 +15,8 @@ interface Postulacion {
   puesto_id: string | null;
   estado: string;
   creado_a: string;
+  entrevista_inicio?: string | null;
+  entrevista_meet?: string | null;
 }
 
 interface Puesto {
@@ -148,6 +150,27 @@ export default function MiCuentaPage() {
                                 <p className="font-semibold">{p.puesto || "Búsqueda"}</p>
                               )}
                               <p className="text-sm text-slate-500">Postulado el {fecha(p.creado_a)}</p>
+                              {p.estado === "en_entrevista" && p.entrevista_inicio && (
+                                <p className="mt-1 text-sm font-medium text-brand-700">
+                                  📅 Entrevista:{" "}
+                                  {new Date(p.entrevista_inicio).toLocaleString("es-UY", {
+                                    weekday: "long",
+                                    day: "numeric",
+                                    month: "long",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    timeZone: "America/Montevideo",
+                                  })}
+                                  {p.entrevista_meet && (
+                                    <>
+                                      {" · "}
+                                      <a href={p.entrevista_meet} target="_blank" rel="noreferrer" className="underline">
+                                        Unirse por Meet
+                                      </a>
+                                    </>
+                                  )}
+                                </p>
+                              )}
                             </div>
                             <span className={`self-start rounded-full border px-3 py-1 text-xs font-semibold sm:self-center ${est.clase}`}>
                               {est.texto}

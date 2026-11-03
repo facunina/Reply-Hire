@@ -88,6 +88,8 @@ export const config = {
     '/api/send-email/:path*',
     '/api/estado/:path*',
     '/api/preguntas/:path*',
+    '/api/agendar/:path*',
+    '/api/google/:path*',
     '/api/puestos',
   ],
 };

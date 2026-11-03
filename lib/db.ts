@@ -41,6 +41,10 @@ export interface Candidato {
   posible_inyeccion?: boolean;
   mensaje?: string;             // texto libre que el candidato le deja al reclutador
   preguntas_entrevista?: string; // JSON con las preguntas sugeridas por la IA
+  entrevista_inicio?: string | null;   // fecha y hora de la entrevista agendada
+  entrevista_evento_id?: string;       // id del evento en Google Calendar (para reprogramar)
+  entrevista_link?: string;            // enlace al evento en Google Calendar
+  entrevista_meet?: string;            // enlace de Google Meet
   cv_texto?: string;
   cv_url?: string;
   score?: number;
@@ -79,6 +83,10 @@ const COLUMNAS = [
   'posible_inyeccion',
   'mensaje',
   'preguntas_entrevista',
+  'entrevista_inicio',
+  'entrevista_evento_id',
+  'entrevista_link',
+  'entrevista_meet',
   'cv_texto',
   'cv_url',
   'score',
@@ -142,6 +150,10 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
   if (c.posible_inyeccion !== undefined) fila.posible_inyeccion = !!c.posible_inyeccion;
   if (c.mensaje !== undefined) fila.mensaje = c.mensaje || '';
   if (c.preguntas_entrevista !== undefined) fila.preguntas_entrevista = c.preguntas_entrevista || '';
+  if (c.entrevista_inicio !== undefined) fila.entrevista_inicio = c.entrevista_inicio || null;
+  if (c.entrevista_evento_id !== undefined) fila.entrevista_evento_id = c.entrevista_evento_id || '';
+  if (c.entrevista_link !== undefined) fila.entrevista_link = c.entrevista_link || '';
+  if (c.entrevista_meet !== undefined) fila.entrevista_meet = c.entrevista_meet || '';
   if (c.cv_texto !== undefined) fila.cv_texto = c.cv_texto || '';
   if (c.cv_url !== undefined) fila.cv_url = c.cv_url || '';
   if (c.score !== undefined) {
@@ -217,11 +229,14 @@ export async function obtenerCandidato(id: string): Promise<Candidato | null> {
 /** Postulaciones de una cuenta de candidato (más recientes primero). Sólo los
  *  campos que el propio candidato puede ver: no incluye score ni análisis de la IA. */
 export async function obtenerPostulacionesDeUsuario(usuarioId: string): Promise<
-  { id: string; puesto: string; puesto_id: string | null; estado: string; creado_a: string }[]
+  {
+    id: string; puesto: string; puesto_id: string | null; estado: string; creado_a: string;
+    entrevista_inicio: string | null; entrevista_meet: string | null;
+  }[]
 > {
   const { data, error } = await getSupabase()
     .from(TABLA)
-    .select('id, puesto, puesto_id, estado, creado_a')
+    .select('id, puesto, puesto_id, estado, creado_a, entrevista_inicio, entrevista_meet')
     .eq('usuario_id', usuarioId)
     .order('creado_a', { ascending: false });
 

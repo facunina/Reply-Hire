@@ -22,6 +22,9 @@ interface Candidato {
   posible_inyeccion?: boolean;
   mensaje?: string;
   preguntas_entrevista?: string;
+  entrevista_inicio?: string | null;
+  entrevista_link?: string;
+  entrevista_meet?: string;
   guardado?: boolean;
   creado_a?: string;
   fecha_postulacion: string;
@@ -79,6 +82,10 @@ export default function DashboardPage() {
   const [cargando, setCargando] = useState(true);
   // Nombre del puesto cuya pestaña está abierta ("" hasta que cargan los puestos).
   const [puestoActivo, setPuestoActivo] = useState<string>("");
+
+  // Formulario para agendar la entrevista en Google Calendar.
+  const [agenda, setAgenda] = useState({ fecha: "", hora: "10:00", duracion: "45", conMeet: true, invitados: "" });
+  const [agendando, setAgendando] = useState(false);
 
   // Preguntas de entrevista generadas por la IA, por id de candidato.
   const [preguntas, setPreguntas] = useState<Record<string, PreguntaEntrevista[]>>({});
@@ -142,6 +149,43 @@ export default function DashboardPage() {
       body: JSON.stringify({ pagina: "dashboard" }),
     }).catch(() => {});
   }, []);
+
+  const agendarEntrevista = async (id: string) => {
+    if (!agenda.fecha || !agenda.hora) {
+      mostrarFlash("Elegí fecha y hora de la entrevista.", "error");
+      return;
+    }
+    setAgendando(true);
+    try {
+      const res = await fetch("/api/agendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          inicio: `${agenda.fecha}T${agenda.hora}`,
+          duracion: Number(agenda.duracion),
+          conMeet: agenda.conMeet,
+          invitados: agenda.invitados.split(/[,;\s]+/).filter(Boolean),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        mostrarFlash(data.error || "No se pudo agendar la entrevista.", "error");
+        return;
+      }
+      const cambios = { entrevista_inicio: data.inicio, entrevista_link: data.link, entrevista_meet: data.meet };
+      setCandidatos((prev) => prev.map((c) => (c.id === id ? { ...c, ...cambios } : c)));
+      setSeleccionado((prev) => (prev && prev.id === id ? { ...prev, ...cambios } : prev));
+      mostrarFlash(
+        data.reprogramada ? "Entrevista reprogramada: se avisó por mail a los invitados." : "Entrevista agendada: se envió la invitación por mail.",
+        "ok"
+      );
+    } catch {
+      mostrarFlash("Error de red al agendar la entrevista.", "error");
+    } finally {
+      setAgendando(false);
+    }
+  };
 
   const generarPreguntas = async (id: string) => {
     setGenerandoPreguntas(true);
@@ -854,6 +898,100 @@ export default function DashboardPage() {
                         Rechazar
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {seleccionado.estado === "en_entrevista" && (
+                  <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                    <h4 className="text-sm font-bold text-slate-700">Agendar entrevista (Google Calendar)</h4>
+                    {seleccionado.entrevista_inicio && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-900">
+                        <p className="font-semibold">
+                          📅{" "}
+                          {new Date(seleccionado.entrevista_inicio).toLocaleString("es-UY", {
+                            weekday: "long",
+                            day: "numeric",
+                            month: "long",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: "America/Montevideo",
+                          })}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-3">
+                          {seleccionado.entrevista_link && (
+                            <a href={seleccionado.entrevista_link} target="_blank" rel="noreferrer" className="font-semibold underline">
+                              Ver en Calendar
+                            </a>
+                          )}
+                          {seleccionado.entrevista_meet && (
+                            <a href={seleccionado.entrevista_meet} target="_blank" rel="noreferrer" className="font-semibold underline">
+                              Link de Meet
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <label className="text-xs font-medium text-slate-600">
+                        Fecha
+                        <input
+                          type="date"
+                          value={agenda.fecha}
+                          onChange={(e) => setAgenda({ ...agenda, fecha: e.target.value })}
+                          className="mt-1 block w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-600">
+                        Hora
+                        <input
+                          type="time"
+                          value={agenda.hora}
+                          onChange={(e) => setAgenda({ ...agenda, hora: e.target.value })}
+                          className="mt-1 block w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-600">
+                        Duración
+                        <select
+                          value={agenda.duracion}
+                          onChange={(e) => setAgenda({ ...agenda, duracion: e.target.value })}
+                          className="mt-1 block w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white"
+                        >
+                          <option value="30">30 min</option>
+                          <option value="45">45 min</option>
+                          <option value="60">1 hora</option>
+                          <option value="90">1 h 30</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label className="block text-xs font-medium text-slate-600">
+                      Invitar también a <span className="font-normal text-slate-400">(opcional, emails separados por coma)</span>
+                      <input
+                        type="text"
+                        value={agenda.invitados}
+                        onChange={(e) => setAgenda({ ...agenda, invitados: e.target.value })}
+                        placeholder="otro.reclutador@empresa.com"
+                        className="mt-1 block w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={agenda.conMeet}
+                        onChange={(e) => setAgenda({ ...agenda, conMeet: e.target.checked })}
+                      />
+                      Agregar link de Google Meet
+                    </label>
+                    <button
+                      onClick={() => agendarEntrevista(seleccionado.id)}
+                      disabled={agendando}
+                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
+                    >
+                      {agendando ? "Agendando…" : seleccionado.entrevista_inicio ? "Reprogramar entrevista" : "Agendar e invitar al candidato"}
+                    </button>
+                    <p className="text-xs text-slate-400">
+                      Se crea en el Google Calendar del reclutador y Google le envía la invitación por mail al candidato.
+                    </p>
                   </div>
                 )}
 

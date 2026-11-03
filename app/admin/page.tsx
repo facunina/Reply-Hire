@@ -422,6 +422,13 @@ export default function AdminPage() {
           Panel de Control
         </span>
         <div className="flex items-center gap-2 shrink-0">
+          <a
+            href="/api/google/conectar"
+            className="text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-colors"
+            title="Conecta el Google Calendar donde se agendan las entrevistas"
+          >
+            📅 Conectar Google Calendar
+          </a>
           <button
             onClick={() => setMostrarDiccionario(true)}
             className="text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg transition-colors"
