@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { rolEquipoDesdeCookies } from '@/lib/auth-equipo';
 import { leerEventos } from '@/lib/eventos';
 
 export const dynamic = 'force-dynamic';
@@ -10,12 +10,10 @@ export const dynamic = 'force-dynamic';
 // experiencia y uso, más los últimos 20 eventos.
 export async function GET(request: Request) {
   try {
-    // 1) Validar sesión de admin ANTES de cualquier otra cosa. El rol se deduce
-    //    del token: solo el ADMIN_SESSION_TOKEN da acceso. No se lee ningún
-    //    campo "rol" del valor de la cookie (evita escalada de privilegios).
-    const cookieStore = await cookies();
-    const sesion = cookieStore.get('sesion')?.value || '';
-    if (!sesion || sesion !== process.env.ADMIN_SESSION_TOKEN) {
+    // 1) Validar sesión de admin ANTES de cualquier otra cosa. El rol sale de
+    //    `app_metadata.rol` de la cuenta de Supabase Auth, que el usuario no
+    //    puede editar (evita escalada de privilegios).
+    if ((await rolEquipoDesdeCookies()) !== 'admin') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 

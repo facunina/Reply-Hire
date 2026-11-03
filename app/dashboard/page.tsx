@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PUESTOS, PUESTO_POR_DEFECTO } from "@/lib/puestos";
 import { AREAS, AREA_POR_DEFECTO } from "@/lib/areas";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 interface Candidato {
   id: string;
@@ -21,10 +21,28 @@ interface Candidato {
   feedback: string;
   posible_inyeccion?: boolean;
   mensaje?: string;
+  preguntas_entrevista?: string;
   guardado?: boolean;
   creado_a?: string;
   fecha_postulacion: string;
   fecha_decision: string | null;
+}
+
+interface PreguntaEntrevista {
+  pregunta: string;
+  objetivo: string;
+  tipo: string;
+}
+
+/** Lee las preguntas guardadas en el candidato (texto JSON) sin romper si viene vacío o mal formado. */
+function leerPreguntas(texto?: string): PreguntaEntrevista[] {
+  if (!texto) return [];
+  try {
+    const v = JSON.parse(texto);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
 }
 
 interface Puesto {
@@ -59,7 +77,12 @@ export default function DashboardPage() {
   const [enviando, setEnviando] = useState(false);
   const [mensajeOk, setMensajeOk] = useState("");
   const [cargando, setCargando] = useState(true);
-  const [puestoActivo, setPuestoActivo] = useState<string>(PUESTO_POR_DEFECTO);
+  // Nombre del puesto cuya pestaña está abierta ("" hasta que cargan los puestos).
+  const [puestoActivo, setPuestoActivo] = useState<string>("");
+
+  // Preguntas de entrevista generadas por la IA, por id de candidato.
+  const [preguntas, setPreguntas] = useState<Record<string, PreguntaEntrevista[]>>({});
+  const [generandoPreguntas, setGenerandoPreguntas] = useState(false);
 
   // Puestos (búsquedas) y formulario de creación
   const [puestos, setPuestos] = useState<Puesto[]>([]);
@@ -99,7 +122,11 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/puestos");
       const data = await res.json();
-      setPuestos(data.puestos || []);
+      const lista: Puesto[] = data.puestos || [];
+      setPuestos(lista);
+      // Si la pestaña abierta ya no corresponde a una búsqueda vigente (o es la
+      // primera carga), se abre la primera búsqueda.
+      setPuestoActivo((actual) => (lista.some((p) => p.nombre === actual) ? actual : lista[0]?.nombre || ""));
     } catch (error) {
       console.error("Error al cargar puestos:", error);
     }
@@ -116,9 +143,33 @@ export default function DashboardPage() {
     }).catch(() => {});
   }, []);
 
+  const generarPreguntas = async (id: string) => {
+    setGenerandoPreguntas(true);
+    try {
+      const res = await fetch("/api/preguntas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        mostrarFlash(data.error || "No se pudieron generar las preguntas.", "error");
+        return;
+      }
+      setPreguntas((prev) => ({ ...prev, [id]: data.preguntas }));
+      if (!data.guardadas) {
+        mostrarFlash("Preguntas generadas (no se guardaron: falta actualizar la base).", "error");
+      }
+    } catch {
+      mostrarFlash("Error de red al generar las preguntas.", "error");
+    } finally {
+      setGenerandoPreguntas(false);
+    }
+  };
+
   const cerrarSesion = async () => {
     try {
-      await fetch("/api/logout", { method: "POST" });
+      await getSupabaseBrowser().auth.signOut();
     } catch {
       /* ignorar */
     } finally {
@@ -333,24 +384,14 @@ export default function DashboardPage() {
     }
   };
 
-  // Pestañas: catálogo estático + puestos creados desde el dashboard + cualquier
-  // puesto presente en los datos (cubre postulaciones legacy con un puesto que ya
-  // no está en el catálogo).
-  const puestosTabs = Array.from(
-    new Set([
-      ...PUESTOS.map((p) => p.nombre),
-      ...puestos.map((p) => p.nombre),
-      ...candidatos.map((c) => c.puesto).filter(Boolean),
-    ])
-  );
+  // Pestañas: sólo las búsquedas vigentes de la tabla `puestos` (las mismas a
+  // las que un candidato se puede postular hoy desde el portal).
+  const puestosTabs = Array.from(new Set(puestos.map((p) => p.nombre)));
 
-  // Candidatos del puesto activo (los legacy sin puesto caen en el por defecto).
-  const candidatosFiltrados = candidatos.filter(
-    (c) => (c.puesto || PUESTO_POR_DEFECTO) === puestoActivo
-  );
+  // Candidatos del puesto activo.
+  const candidatosFiltrados = candidatos.filter((c) => c.puesto === puestoActivo);
 
-  const contarPorPuesto = (p: string) =>
-    candidatos.filter((c) => (c.puesto || PUESTO_POR_DEFECTO) === p).length;
+  const contarPorPuesto = (p: string) => candidatos.filter((c) => c.puesto === p).length;
 
   // Lista que se muestra en la columna izquierda según la vista activa.
   // Principales: filtrada por el puesto activo. Guardados: todos los guardados.
@@ -749,6 +790,46 @@ export default function DashboardPage() {
                   El CV no está disponible para este candidato.
                 </div>
               )}
+
+              {/* Preguntas para la entrevista (IA) — desde que el candidato avanza a entrevista */}
+              {(() => {
+                const lista = preguntas[seleccionado.id] || leerPreguntas(seleccionado.preguntas_entrevista);
+                const enEntrevista = seleccionado.estado === "en_entrevista";
+                if (!enEntrevista && lista.length === 0) return null;
+                return (
+                  <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <h4 className="text-sm font-bold text-blue-900">Preguntas para la entrevista</h4>
+                      {enEntrevista && (
+                        <button
+                          onClick={() => generarPreguntas(seleccionado.id)}
+                          disabled={generandoPreguntas}
+                          className="text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg px-3 py-1.5 transition-colors"
+                        >
+                          {generandoPreguntas ? "Generando…" : lista.length ? "Regenerar con IA" : "Generar con IA"}
+                        </button>
+                      )}
+                    </div>
+                    {lista.length === 0 ? (
+                      <p className="text-sm text-slate-600">
+                        La IA arma preguntas a medida según el CV, el puesto y las brechas detectadas.
+                      </p>
+                    ) : (
+                      <ol className="space-y-3 list-decimal list-inside">
+                        {lista.map((p, i) => (
+                          <li key={i} className="text-sm text-slate-800 leading-relaxed">
+                            <span className="font-medium">{p.pregunta}</span>
+                            <div className="ml-5 mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                              <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 capitalize">{p.tipo}</span>
+                              {p.objetivo && <span>{p.objetivo}</span>}
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                );
+              })()}
 
               <hr className="border-slate-100" />
 

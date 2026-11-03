@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 // ─── Tipos de la respuesta de /api/admin/metricas ────────────────────────────
 interface Conexion {
@@ -319,7 +320,7 @@ export default function AdminPage() {
 
   const cerrarSesion = async () => {
     try {
-      await fetch("/api/logout", { method: "POST" });
+      await getSupabaseBrowser().auth.signOut();
     } catch {
       /* ignorar */
     } finally {

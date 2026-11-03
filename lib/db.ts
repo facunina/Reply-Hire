@@ -40,6 +40,7 @@ export interface Candidato {
   usuario_id?: string | null;   // cuenta (Supabase Auth) del candidato que se postuló
   posible_inyeccion?: boolean;
   mensaje?: string;             // texto libre que el candidato le deja al reclutador
+  preguntas_entrevista?: string; // JSON con las preguntas sugeridas por la IA
   cv_texto?: string;
   cv_url?: string;
   score?: number;
@@ -77,6 +78,7 @@ const COLUMNAS = [
   'usuario_id',
   'posible_inyeccion',
   'mensaje',
+  'preguntas_entrevista',
   'cv_texto',
   'cv_url',
   'score',
@@ -139,6 +141,7 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
   if (c.usuario_id !== undefined) fila.usuario_id = c.usuario_id || null;
   if (c.posible_inyeccion !== undefined) fila.posible_inyeccion = !!c.posible_inyeccion;
   if (c.mensaje !== undefined) fila.mensaje = c.mensaje || '';
+  if (c.preguntas_entrevista !== undefined) fila.preguntas_entrevista = c.preguntas_entrevista || '';
   if (c.cv_texto !== undefined) fila.cv_texto = c.cv_texto || '';
   if (c.cv_url !== undefined) fila.cv_url = c.cv_url || '';
   if (c.score !== undefined) {

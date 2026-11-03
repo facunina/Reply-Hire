@@ -70,7 +70,14 @@ export default function IngresarPage() {
     setAviso("");
 
     if (modo === "registro" && !nombre.trim()) return setError("Ingresá tu nombre.");
-    if (!email.trim() || !email.includes("@")) return setError("Ingresá un email válido.");
+    if (!email.trim() || !email.includes("@")) {
+      // Error típico: un reclutador que escribe su usuario acá en vez de en /login.
+      return setError(
+        modo === "ingresar"
+          ? "Ingresá un email válido. Si sos reclutador, entrá por el acceso de reclutadores (abajo)."
+          : "Ingresá un email válido."
+      );
+    }
     if (password.length < 6) return setError("La contraseña debe tener al menos 6 caracteres.");
 
     setEnviando(true);

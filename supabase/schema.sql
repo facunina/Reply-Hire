@@ -35,6 +35,7 @@ create table if not exists public.candidatos (
   usuario_id        uuid references auth.users(id) on delete set null,  -- cuenta del candidato (Supabase Auth)
   posible_inyeccion boolean not null default false,
   mensaje           text default '',   -- texto libre del candidato para el reclutador
+  preguntas_entrevista text default '',  -- JSON con las preguntas sugeridas por la IA
   cv_texto          text default '',
   cv_url            text default '',
   score             numeric default 0,
@@ -50,6 +51,7 @@ create table if not exists public.candidatos (
 -- Bases creadas antes de que existiera la columna `usuario_id`.
 alter table public.candidatos add column if not exists usuario_id uuid references auth.users(id) on delete set null;
 alter table public.candidatos add column if not exists mensaje text default '';
+alter table public.candidatos add column if not exists preguntas_entrevista text default '';
 create index if not exists candidatos_usuario_id_idx on public.candidatos (usuario_id);
 
 create index if not exists candidatos_creado_a_idx on public.candidatos (creado_a desc);
