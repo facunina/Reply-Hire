@@ -94,13 +94,25 @@ export async function GET(request: Request) {
     const experiencia = { paginasVistas, postulacionesRecibidas, tasaConversion, tasaAbandono, decisiones };
 
     // 6) USO del sistema.
+    // El score llega en el evento `postulacion_analizada` (la IA corre después de
+    // recibir la postulación). Las postulaciones viejas lo traen en
+    // `postulacion_recibida`; se toma el que exista. Se lee de TODOS los eventos
+    // para no perder el análisis de una postulación por el filtro de tipo.
+    const scorePorId: Record<string, number> = {};
+    for (const e of todos.filter((x) => x.tipo === 'postulacion_analizada' || x.tipo === 'postulacion_recibida')) {
+      const valor = Number(meta(e).score);
+      const pid = meta(e).id;
+      if (pid && !isNaN(valor) && (scorePorId[pid] === undefined || e.tipo === 'postulacion_analizada')) scorePorId[pid] = valor;
+    }
+    const scoreDe = (e: any) => Number(scorePorId[meta(e).id] ?? meta(e).score);
+
     const postulacionesPorPuesto: Record<string, number> = {};
     const sumaScore: Record<string, number> = {};
     const countScore: Record<string, number> = {};
     for (const e of postulacionesEv) {
       const p = meta(e).puesto || 'Sin puesto';
       postulacionesPorPuesto[p] = (postulacionesPorPuesto[p] || 0) + 1;
-      const s = Number(meta(e).score);
+      const s = scoreDe(e);
       if (!isNaN(s)) {
         sumaScore[p] = (sumaScore[p] || 0) + s;
         countScore[p] = (countScore[p] || 0) + 1;
@@ -113,7 +125,7 @@ export async function GET(request: Request) {
 
     const distribucionScores = { bajo: 0, medio: 0, alto: 0 }; // 0-39 / 40-69 / 70-100
     for (const e of postulacionesEv) {
-      const s = Number(meta(e).score);
+      const s = scoreDe(e);
       if (isNaN(s)) continue;
       if (s < 40) distribucionScores.bajo++;
       else if (s < 70) distribucionScores.medio++;

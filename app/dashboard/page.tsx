@@ -22,6 +22,7 @@ interface Candidato {
   posible_inyeccion?: boolean;
   mensaje?: string;
   preguntas_entrevista?: string;
+  analisis?: string; // procesando | listo | sin_datos | error
   entrevista_inicio?: string | null;
   entrevista_link?: string;
   entrevista_meet?: string;
@@ -29,6 +30,40 @@ interface Candidato {
   creado_a?: string;
   fecha_postulacion: string;
   fecha_decision: string | null;
+}
+
+/** El análisis con IA corre después de recibir la postulación. Las postulaciones
+ *  viejas no tienen este campo: se consideran analizadas. */
+const analisisDe = (c: { analisis?: string }) => c.analisis || "listo";
+
+/**
+ * Lee la respuesta de una API del panel SIN lanzar nunca, y deja en `error` un
+ * mensaje claro para el reclutador según lo que pasó (sesión vencida, permisos,
+ * error del servidor con su detalle, respuesta inesperada).
+ */
+async function leerJSON(res: Response): Promise<any> {
+  let data: any = {};
+  try {
+    data = await res.json();
+  } catch {
+    // El servidor no devolvió JSON (p. ej. una página de error).
+    data = {};
+  }
+  if (res.ok) return data;
+
+  const detalle = typeof data.error === "string" && data.error ? data.error : "";
+  if (res.status === 401) {
+    data.error = "Tu sesión venció o no es válida. Volvé a iniciar sesión (Cerrar sesión → Ingresar).";
+  } else if (res.status === 403) {
+    data.error = "Tu usuario no tiene permiso para hacer esto." + (detalle ? ` (${detalle})` : "");
+  } else if (res.status >= 500) {
+    data.error = detalle
+      ? `Error del servidor: ${detalle}`
+      : `Error del servidor (código ${res.status}). Revisá la consola del servidor para ver el detalle.`;
+  } else {
+    data.error = detalle || `La solicitud no se pudo completar (código ${res.status}).`;
+  }
+  return data;
 }
 
 interface PreguntaEntrevista {
@@ -87,6 +122,8 @@ export default function DashboardPage() {
   const [agenda, setAgenda] = useState({ fecha: "", hora: "10:00", duracion: "45", conMeet: true, invitados: "" });
   const [agendando, setAgendando] = useState(false);
 
+  const [reanalizando, setReanalizando] = useState(false);
+
   // Preguntas de entrevista generadas por la IA, por id de candidato.
   const [preguntas, setPreguntas] = useState<Record<string, PreguntaEntrevista[]>>({});
   const [generandoPreguntas, setGenerandoPreguntas] = useState(false);
@@ -108,7 +145,7 @@ export default function DashboardPage() {
   const cargarCandidatos = async () => {
     try {
       const res = await fetch("/api/candidatos");
-      const data = await res.json();
+      const data = await leerJSON(res);
       const lista: Candidato[] = data.candidatos || [];
       // Separamos: la vista principal sólo muestra los NO guardados.
       setCandidatos(lista.filter((c) => !c.guardado));
@@ -128,7 +165,7 @@ export default function DashboardPage() {
   const cargarPuestos = async () => {
     try {
       const res = await fetch("/api/puestos");
-      const data = await res.json();
+      const data = await leerJSON(res);
       const lista: Puesto[] = data.puestos || [];
       setPuestos(lista);
       // Si la pestaña abierta ya no corresponde a una búsqueda vigente (o es la
@@ -138,6 +175,26 @@ export default function DashboardPage() {
       console.error("Error al cargar puestos:", error);
     }
   };
+
+  // Mientras haya postulaciones en análisis, se recarga la lista cada 4 s para
+  // mostrar el resultado de la IA apenas esté (y el detalle abierto también).
+  const hayAnalizando = candidatos.some((c) => analisisDe(c) === "procesando");
+  useEffect(() => {
+    if (!hayAnalizando) return;
+    const t = setInterval(async () => {
+      try {
+        const res = await fetch("/api/candidatos");
+        const data = await leerJSON(res);
+        const lista: Candidato[] = data.candidatos || [];
+        setCandidatos(lista.filter((c) => !c.guardado));
+        setCandidatosGuardados(lista.filter((c) => c.guardado === true));
+        setSeleccionado((prev) => (prev ? lista.find((c) => c.id === prev.id) || prev : prev));
+      } catch {
+        /* se reintenta en el próximo ciclo */
+      }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [hayAnalizando]);
 
   useEffect(() => {
     cargarCandidatos();
@@ -168,7 +225,7 @@ export default function DashboardPage() {
           invitados: agenda.invitados.split(/[,;\s]+/).filter(Boolean),
         }),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (!res.ok || data.error) {
         mostrarFlash(data.error || "No se pudo agendar la entrevista.", "error");
         return;
@@ -187,6 +244,29 @@ export default function DashboardPage() {
     }
   };
 
+  const reanalizar = async (id: string) => {
+    setReanalizando(true);
+    try {
+      const res = await fetch("/api/candidato/reanalizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await leerJSON(res);
+      if (!res.ok || data.error) {
+        mostrarFlash(data.error || "No se pudo reintentar el análisis.", "error");
+        return;
+      }
+      await cargarCandidatos();
+      if (data.candidato) setSeleccionado((prev) => (prev && prev.id === id ? data.candidato : prev));
+      mostrarFlash(data.analisis === "listo" ? "Análisis completado." : "La IA volvió a fallar. Probá de nuevo en un rato.", data.analisis === "listo" ? "ok" : "error");
+    } catch {
+      mostrarFlash("Error de red al reintentar el análisis.", "error");
+    } finally {
+      setReanalizando(false);
+    }
+  };
+
   const generarPreguntas = async (id: string) => {
     setGenerandoPreguntas(true);
     try {
@@ -195,7 +275,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (!res.ok || data.error) {
         mostrarFlash(data.error || "No se pudieron generar las preguntas.", "error");
         return;
@@ -229,7 +309,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, guardado: true }),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (res.ok && data.ok) {
         await cargarCandidatos();
         setSeleccionado((prev) => (prev && prev.id === id ? { ...prev, guardado: true } : prev));
@@ -254,7 +334,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (res.ok && data.ok) {
         await cargarCandidatos();
         setSeleccionado((prev) => (prev && prev.id === id ? null : prev));
@@ -288,7 +368,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nuevoPuesto),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (res.ok && data.ok) {
         setModalAbierto(false);
         setNuevoPuesto(PUESTO_VACIO);
@@ -299,7 +379,7 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error("Error al crear puesto:", error);
-      setErrorPuesto("Ocurrió un error de conexión al crear el puesto.");
+      setErrorPuesto("No se pudo conectar con el servidor. Verificá que la app esté corriendo y volvé a intentar.");
     } finally {
       setGuardandoPuesto(false);
     }
@@ -322,7 +402,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: seleccionado.id, tipo }),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (data.feedback) {
         setFeedback(data.feedback);
       } else if (data.error) {
@@ -350,7 +430,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: seleccionado.id, feedback, estadoFinal }),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (res.ok && data.ok) {
         setMensajeOk(data.mensaje || "Email enviado correctamente.");
         await cargarCandidatos();
@@ -375,7 +455,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: seleccionado.id, estado: nuevoEstado }),
       });
-      const data = await res.json();
+      const data = await leerJSON(res);
       if (res.ok && data.ok) {
         const msg = nuevoEstado === "en_entrevista"
           ? "Candidato avanzado a fase de entrevista."
@@ -642,17 +722,31 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    <div className="flex items-center space-x-3 mt-3">
-                      <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${colorBarra(c.score)}`}
-                          style={{ width: `${c.score}%` }}
-                        />
+                    {analisisDe(c) === "listo" ? (
+                      <div className="flex items-center space-x-3 mt-3">
+                        <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full ${colorBarra(c.score)}`}
+                            style={{ width: `${c.score}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-bold w-8 text-right ${colorTexto(c.score)}`}>
+                          {c.score}%
+                        </span>
                       </div>
-                      <span className={`text-xs font-bold w-8 text-right ${colorTexto(c.score)}`}>
-                        {c.score}%
-                      </span>
-                    </div>
+                    ) : (
+                      <p
+                        className={`mt-3 text-xs font-semibold ${
+                          analisisDe(c) === "procesando" ? "text-blue-700 animate-pulse" : "text-amber-700"
+                        }`}
+                      >
+                        {analisisDe(c) === "procesando"
+                          ? "⏳ Analizando CV con IA…"
+                          : analisisDe(c) === "sin_datos"
+                          ? "⚠️ CV sin datos profesionales"
+                          : "⚠️ Análisis pendiente"}
+                      </p>
+                    )}
 
                     {/* En la vista de guardados: puesto y fecha de postulación */}
                     {vista === "guardados" && (
@@ -736,15 +830,40 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Compatibility Score */}
-              <div className="bg-slate-50 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
-                <span className={`text-5xl font-extrabold ${colorTexto(seleccionado.score)}`}>
-                  {seleccionado.score}%
-                </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-1">
-                  Compatibilidad
-                </span>
-              </div>
+              {/* Compatibility Score — o estado del análisis con IA si todavía no terminó */}
+              {analisisDe(seleccionado) === "listo" ? (
+                <div className="bg-slate-50 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
+                  <span className={`text-5xl font-extrabold ${colorTexto(seleccionado.score)}`}>
+                    {seleccionado.score}%
+                  </span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-1">
+                    Compatibilidad
+                  </span>
+                </div>
+              ) : analisisDe(seleccionado) === "procesando" ? (
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 text-center">
+                  <p className="text-sm font-bold text-blue-900 animate-pulse">⏳ La IA está analizando este CV…</p>
+                  <p className="mt-1 text-xs text-blue-800">
+                    El score, las fortalezas y las brechas aparecen solos en unos segundos.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+                  <p className="text-sm font-bold text-amber-900">
+                    {analisisDe(seleccionado) === "sin_datos"
+                      ? "La IA no encontró información profesional en este CV."
+                      : "No se pudo completar el análisis con IA."}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">Revisá el PDF original o volvé a intentar el análisis.</p>
+                  <button
+                    onClick={() => reanalizar(seleccionado.id)}
+                    disabled={reanalizando}
+                    className="mt-3 text-xs font-semibold text-amber-900 bg-white border border-amber-300 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg px-3 py-1.5 transition-colors"
+                  >
+                    {reanalizando ? "Analizando…" : "Reintentar análisis"}
+                  </button>
+                </div>
+              )}
 
               {/* Mensaje que el candidato dejó al postularse (texto libre, no pasa por la IA) */}
               {seleccionado.mensaje && seleccionado.mensaje.trim() && (
@@ -879,7 +998,13 @@ export default function DashboardPage() {
 
               {/* ACTIONS SECTION */}
               <div className="space-y-3">
-                {seleccionado.estado === "pendiente" && (
+                {seleccionado.estado === "pendiente" && analisisDe(seleccionado) === "procesando" && (
+                  <p className="text-sm text-slate-500 text-center">
+                    Podés decidir cuando termine el análisis con IA.
+                  </p>
+                )}
+
+                {seleccionado.estado === "pendiente" && analisisDe(seleccionado) !== "procesando" && (
                   <div>
                     <h4 className="text-sm font-bold text-slate-700 mb-3">Fase 1 — Revisión de CV</h4>
                     <div className="flex flex-col sm:flex-row gap-3">

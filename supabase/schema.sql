@@ -36,6 +36,7 @@ create table if not exists public.candidatos (
   posible_inyeccion boolean not null default false,
   mensaje           text default '',   -- texto libre del candidato para el reclutador
   preguntas_entrevista text default '',  -- JSON con las preguntas sugeridas por la IA
+  analisis             text not null default 'listo',  -- procesando | listo | sin_datos | error
   entrevista_inicio    timestamptz,       -- entrevista agendada en Google Calendar
   entrevista_evento_id text default '',
   entrevista_link      text default '',
@@ -56,6 +57,7 @@ create table if not exists public.candidatos (
 alter table public.candidatos add column if not exists usuario_id uuid references auth.users(id) on delete set null;
 alter table public.candidatos add column if not exists mensaje text default '';
 alter table public.candidatos add column if not exists preguntas_entrevista text default '';
+alter table public.candidatos add column if not exists analisis text not null default 'listo';
 alter table public.candidatos add column if not exists entrevista_inicio timestamptz;
 alter table public.candidatos add column if not exists entrevista_evento_id text default '';
 alter table public.candidatos add column if not exists entrevista_link text default '';

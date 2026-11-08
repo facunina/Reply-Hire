@@ -1,17 +1,11 @@
 import { NextResponse, after } from 'next/server';
 import { destinoEmail } from '@/lib/email';
 import { Resend } from 'resend';
-import { analizarJSON, evaluarJSON, generarTexto } from '@/lib/ai';
+import { generarTexto } from '@/lib/ai';
+import { analizarCandidato } from '@/lib/analisis';
 import { guardarCandidato, subirCV, obtenerPuesto, yaSePostulo } from '@/lib/db';
 import { usuarioDesdeRequest } from '@/lib/auth-candidato';
-import {
-  PROMPT_EXTRACCION,
-  PROMPT_SCORING,
-  PROMPT_CONFIRMACION,
-  detectarInyeccion,
-  sanitizarTextoCV,
-  REQUISITOS_PUESTO,
-} from '@/lib/prompts';
+import { PROMPT_CONFIRMACION, detectarInyeccion } from '@/lib/prompts';
 import { registrarEvento } from '@/lib/eventos';
 import { randomUUID } from 'crypto';
 
@@ -58,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     // Una misma cuenta no puede postularse dos veces a la misma búsqueda. Se
-    // verifica antes de gastar llamadas a la IA.
+    // verifica antes de guardar nada.
     if (puestoId) {
       let repetida = false;
       try {
@@ -109,108 +103,22 @@ export async function POST(request: Request) {
     }
 
     // ── Detección de posible inyección de prompts ─────────────────────────────
-    // Se corre sobre el texto ORIGINAL (sin tocar) para marcar el candidato.
+    // Se corre sobre el texto ORIGINAL (sin tocar) para marcar el candidato. El
+    // saneado (lo que ve la IA) se hace en lib/analisis.ts.
     const posibleInyeccion = detectarInyeccion(texto);
 
-    // Texto saneado: solo lo que se le envía al modelo. Reemplaza las frases de
-    // inyección por un marcador. El texto ORIGINAL se sigue guardando en la BD.
-    const textoSaneado = sanitizarTextoCV(texto);
-
-    // ── Requisitos dinámicos según el puesto elegido ──────────────────────────
-    // Si llega un puesto_id válido, evaluamos contra ESE puesto; si no, usamos
-    // el requisito por defecto y el nombre genérico.
-    let requisitos = REQUISITOS_PUESTO;
+    // ── Puesto elegido ────────────────────────────────────────────────────────
     let puestoNombre = "Puesto general";
     let puestoIdGuardado: string | null = null;
-
     if (puestoId) {
       const puesto = await obtenerPuesto(puestoId);
       if (puesto) {
-        requisitos =
-          "Puesto: " + puesto.nombre +
-          ". Misión: " + (puesto.mision || "No especificada") +
-          ". Responsabilidades: " + (puesto.actividades || "No especificadas") +
-          ". Requisitos: " + (puesto.requisitos || "No especificados") +
-          ". Modalidad: " + (puesto.modalidad || "No especificada") + ".";
         puestoNombre = puesto.nombre;
         puestoIdGuardado = puestoId;
       }
     }
 
     const id = randomUUID();
-
-    // Medimos la salud de la conexión con la IA alrededor de extracción + scoring.
-    const iaInicio = Date.now();
-
-    // ── Agente 2.a — Extracción de perfil con IA ──────────────────────────────
-    // NO swallowing: si la IA falla (p. ej. 429 por cuota), devolvemos el error
-    // real en vez de guardar un candidato con columnas vacías.
-    let perfil: any;
-    try {
-      perfil = await analizarJSON(PROMPT_EXTRACCION(textoSaneado));
-    } catch (aiExtractionError: any) {
-      console.error("Error al extraer perfil con IA:", aiExtractionError);
-      await registrarEvento("llamada_ia", "extraccion_scoring", { conexion: "ia", exito: false, latencia_ms: Date.now() - iaInicio });
-      return NextResponse.json(
-        { error: "La IA no pudo analizar el CV (extracción). " + aiExtractionError.message },
-        { status: 502 }
-      );
-    }
-
-    // Sanity check post-extracción: si la IA no logró extraer NINGÚN dato
-    // profesional (ni nombre, ni skills, ni educación, ni experiencia), tratamos
-    // el CV como vacío/ilegible en vez de evaluar un perfil inventado.
-    const sinNombre = !perfil?.nombre || String(perfil.nombre).trim() === "";
-    const sinSkills = !Array.isArray(perfil?.skills) || perfil.skills.length === 0;
-    const sinEducacion = !perfil?.educacion || String(perfil.educacion).trim() === "";
-    const sinExperiencia = !perfil?.años_experiencia || Number(perfil.años_experiencia) === 0;
-    if (sinNombre && sinSkills && sinEducacion && sinExperiencia) {
-      await registrarEvento("cv_rechazado", "sin_datos_profesionales");
-      return NextResponse.json(
-        { error: "No pudimos extraer información profesional del CV. Verificá que el PDF sea un currículum real con texto seleccionable." },
-        { status: 400 }
-      );
-    }
-
-    // ── Agente 2.b — Scoring contra los requisitos DEL PUESTO elegido ─────────
-    // Le pasamos el perfil estructurado Y el texto completo del CV como evidencia
-    // (evaluarJSON usa el modelo de scoring con más tokens) para una evaluación profunda.
-    let analisis: any;
-    try {
-      analisis = await evaluarJSON(PROMPT_SCORING(JSON.stringify(perfil), requisitos, textoSaneado.substring(0, 12000)));
-    } catch (aiScoringError: any) {
-      console.error("Error al calificar perfil con IA:", aiScoringError);
-      await registrarEvento("llamada_ia", "extraccion_scoring", { conexion: "ia", exito: false, latencia_ms: Date.now() - iaInicio });
-      return NextResponse.json(
-        { error: "La IA no pudo evaluar el CV (scoring). " + aiScoringError.message },
-        { status: 502 }
-      );
-    }
-
-    // Ambas llamadas a la IA fueron exitosas.
-    await registrarEvento("llamada_ia", "extraccion_scoring", { conexion: "ia", exito: true, latencia_ms: Date.now() - iaInicio });
-
-    // Normalización del score (0–100)
-    let score = Number(analisis.score);
-    if (isNaN(score)) {
-      score = 0;
-    }
-    score = Math.max(0, Math.min(100, score));
-
-    // ── Límite duro de longitud (red de seguridad para el dashboard) ──────────
-    // Se aplica SIEMPRE, sin importar lo que devuelva la IA, para que la UI nunca
-    // reciba texto excesivamente largo aunque el modelo no respete el prompt.
-    // Reglas: máx. 4 fortalezas/brechas, 120 caracteres c/u; resumen máx. 250.
-    const recortar = (s: any, max: number): string => {
-      const t = String(s ?? "").trim();
-      return t.length > max ? t.slice(0, max) + "..." : t;
-    };
-    const limitarLista = (arr: any): string[] =>
-      (Array.isArray(arr) ? arr : []).slice(0, 4).map((x) => recortar(x, 120));
-
-    const fortalezasLimitadas = limitarLista(analisis.fortalezas);
-    const brechasLimitadas = limitarLista(analisis.brechas);
-    const resumenLimitado = recortar(analisis.resumen_evaluacion, 480);
 
     // Subir el PDF original a Supabase Storage (no fatal: si Storage no está
     // configurado, guardamos igual el candidato sin cv_url).
@@ -224,23 +132,19 @@ export async function POST(request: Request) {
     // Armar objeto candidato — arrays pre-serializados con " | " para la BD
     const candidato = {
       id,
-      nombre: nombre || perfil.nombre || "Sin nombre",
-      email: email || perfil.email || "",
+      nombre: nombre || "Sin nombre",
+      email,
       telefono: telefono || "",
       puesto: puestoNombre,
       puesto_id: puestoIdGuardado,
       usuario_id: usuario.id,
       mensaje,
-      cv_texto: texto.substring(0, 3000),
+      // Se guarda texto suficiente para poder reintentar el análisis más tarde.
+      cv_texto: texto.substring(0, 15000),
       cv_url,
-      score: score,
-      skills: Array.isArray(perfil.skills) ? perfil.skills.join(" | ") : "",
-      educacion: perfil.educacion || "",
-      idiomas: Array.isArray(perfil.idiomas) ? perfil.idiomas.join(" | ") : "",
-      resumen_perfil: perfil.resumen || "",
-      fortalezas: fortalezasLimitadas.join(" | "),
-      brechas: brechasLimitadas.join(" | "),
-      resumen_evaluacion: resumenLimitado,
+      score: 0,
+      // La IA completa score, fortalezas, brechas y resumen después de responder.
+      analisis: "procesando",
       posible_inyeccion: posibleInyeccion,
       estado: "pendiente",
       feedback: "",
@@ -261,7 +165,6 @@ export async function POST(request: Request) {
     await registrarEvento("postulacion_recibida", candidato.nombre, {
       id: candidato.id,
       puesto: candidato.puesto,
-      score: candidato.score,
       posible_inyeccion: candidato.posible_inyeccion,
     });
 
@@ -269,6 +172,11 @@ export async function POST(request: Request) {
     if (candidato.posible_inyeccion) {
       await registrarEvento("alerta_seguridad", "posible inyeccion en CV", { candidato: candidato.nombre });
     }
+
+    // ── Análisis con IA en segundo plano ──────────────────────────────────────
+    // El candidato no espera a la IA: se responde ya y el análisis corre después.
+    // Se le pasa el texto completo del PDF (en la base queda recortado).
+    after(() => analizarCandidato(id, texto).then(() => undefined));
 
     // ── Email de confirmación de recepción al candidato ───────────────────────
     // Se manda con after(): corre DESPUÉS de responder, así el candidato no

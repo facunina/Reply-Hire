@@ -41,6 +41,7 @@ export interface Candidato {
   posible_inyeccion?: boolean;
   mensaje?: string;             // texto libre que el candidato le deja al reclutador
   preguntas_entrevista?: string; // JSON con las preguntas sugeridas por la IA
+  analisis?: string;            // procesando | listo | sin_datos | error (ver lib/analisis.ts)
   entrevista_inicio?: string | null;   // fecha y hora de la entrevista agendada
   entrevista_evento_id?: string;       // id del evento en Google Calendar (para reprogramar)
   entrevista_link?: string;            // enlace al evento en Google Calendar
@@ -83,6 +84,7 @@ const COLUMNAS = [
   'posible_inyeccion',
   'mensaje',
   'preguntas_entrevista',
+  'analisis',
   'entrevista_inicio',
   'entrevista_evento_id',
   'entrevista_link',
@@ -150,6 +152,7 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
   if (c.posible_inyeccion !== undefined) fila.posible_inyeccion = !!c.posible_inyeccion;
   if (c.mensaje !== undefined) fila.mensaje = c.mensaje || '';
   if (c.preguntas_entrevista !== undefined) fila.preguntas_entrevista = c.preguntas_entrevista || '';
+  if (c.analisis !== undefined) fila.analisis = c.analisis || 'listo';
   if (c.entrevista_inicio !== undefined) fila.entrevista_inicio = c.entrevista_inicio || null;
   if (c.entrevista_evento_id !== undefined) fila.entrevista_evento_id = c.entrevista_evento_id || '';
   if (c.entrevista_link !== undefined) fila.entrevista_link = c.entrevista_link || '';
