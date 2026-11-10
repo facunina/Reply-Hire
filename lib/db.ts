@@ -8,10 +8,11 @@ let _client: SupabaseClient | null = null;
 function getSupabase(): SupabaseClient {
   if (!_client) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    // Aceptamos la anon key (acceso del lado del servidor con RLS desactivada)
-    // y, como alternativa, la service key si estuviera configurada.
+    // Este módulo corre SÓLO en el servidor, así que usa la service key: las
+    // tablas tienen RLS activada y la clave pública (anon) no puede leerlas ni
+    // escribirlas. La anon queda como respaldo para entornos sin service key.
     const key =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY;
+      process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!url || !key) {
       throw new Error(

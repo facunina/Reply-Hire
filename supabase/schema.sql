@@ -84,11 +84,12 @@ create index if not exists eventos_created_at_idx on public.eventos (created_at 
 create index if not exists eventos_tipo_idx on public.eventos (tipo);
 
 -- ─── RLS ─────────────────────────────────────────────────────────────────────
--- La app accede SOLO desde el servidor (API routes) con la anon key, igual que
--- el proyecto original ("RLS desactivada"). Ver limitaciones en DOCUMENTACION.md §14.
-alter table public.puestos    disable row level security;
-alter table public.candidatos disable row level security;
-alter table public.eventos    disable row level security;
+-- RLS ACTIVADA y sin políticas: con la clave pública (anon) no se puede leer ni
+-- escribir ninguna tabla. La app accede SÓLO desde el servidor con la
+-- service_role key (SUPABASE_SERVICE_KEY), que no se expone al navegador.
+alter table public.puestos    enable row level security;
+alter table public.candidatos enable row level security;
+alter table public.eventos    enable row level security;
 
 -- ─── Storage: bucket público "cvs" para los PDF ─────────────────────────────
 insert into storage.buckets (id, name, public)
@@ -98,16 +99,12 @@ on conflict (id) do update set public = true;
 drop policy if exists "cvs_select_anon" on storage.objects;
 drop policy if exists "cvs_insert_anon" on storage.objects;
 drop policy if exists "cvs_update_anon" on storage.objects;
+-- Subir y reemplazar PDFs lo hace sólo el servidor (service_role); el público
+-- únicamente puede leerlos por su URL.
 
 create policy "cvs_select_anon" on storage.objects
   for select to anon, authenticated using (bucket_id = 'cvs');
 
-create policy "cvs_insert_anon" on storage.objects
-  for insert to anon, authenticated with check (bucket_id = 'cvs');
-
--- upsert: true en subirCV() necesita también UPDATE
-create policy "cvs_update_anon" on storage.objects
-  for update to anon, authenticated using (bucket_id = 'cvs') with check (bucket_id = 'cvs');
 
 -- ─── Puesto de ejemplo (opcional, para poder postular apenas se levanta) ────
 insert into public.puestos (nombre, area, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios)
