@@ -67,6 +67,9 @@ alter table public.candidatos add column if not exists entrevista_evento_id text
 alter table public.candidatos add column if not exists entrevista_link text default '';
 alter table public.candidatos add column if not exists entrevista_meet text default '';
 create index if not exists candidatos_usuario_id_idx on public.candidatos (usuario_id);
+-- Una cuenta no puede postularse dos veces a la misma búsqueda (lo garantiza la
+-- base, no sólo la app). Las postulaciones viejas sin cuenta (NULL) no chocan.
+create unique index if not exists candidatos_usuario_puesto_unico on public.candidatos (usuario_id, puesto_id);
 
 create index if not exists candidatos_creado_a_idx on public.candidatos (creado_a desc);
 create index if not exists candidatos_puesto_id_idx on public.candidatos (puesto_id);

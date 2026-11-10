@@ -163,6 +163,12 @@ export async function POST(request: Request) {
       await guardarCandidato(candidato);
       await registrarEvento("guardado_candidato", candidato.nombre, { conexion: "bdd", exito: true, latencia_ms: Date.now() - bddInicio });
     } catch (dbError: any) {
+      // La base tiene un índice UNIQUE (usuario_id, puesto_id): si dos pedidos de
+      // la misma cuenta llegan casi juntos, el segundo choca acá aunque haya
+      // pasado la verificación previa. Se responde lo mismo que en ese caso.
+      if (/duplicate key|candidatos_usuario_puesto_unico/i.test(dbError?.message || "")) {
+        return NextResponse.json({ error: "Ya te postulaste a esta búsqueda." }, { status: 409 });
+      }
       await registrarEvento("guardado_candidato", candidato.nombre, { conexion: "bdd", exito: false, latencia_ms: Date.now() - bddInicio });
       throw dbError; // lo maneja el catch general (status 500)
     }
