@@ -112,6 +112,12 @@ export async function POST(request: Request) {
     let puestoIdGuardado: string | null = null;
     if (puestoId) {
       const puesto = await obtenerPuesto(puestoId);
+      if (puesto && puesto.activo === false) {
+        return NextResponse.json(
+          { error: "Esta búsqueda ya está cerrada y no recibe más postulaciones." },
+          { status: 409 }
+        );
+      }
       if (puesto) {
         puestoNombre = puesto.nombre;
         puestoIdGuardado = puestoId;

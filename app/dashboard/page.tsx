@@ -10,6 +10,7 @@ interface Candidato {
   email: string;
   telefono: string;
   puesto: string;
+  puesto_id?: string | null;
   cv_texto: string;
   cv_url: string;
   score: number;
@@ -86,6 +87,7 @@ function leerPreguntas(texto?: string): PreguntaEntrevista[] {
 interface Puesto {
   id: string;
   nombre: string;
+  activo?: boolean;
   sobre_nosotros?: string;
   mision?: string;
   actividades?: string;
@@ -115,7 +117,8 @@ export default function DashboardPage() {
   const [enviando, setEnviando] = useState(false);
   const [mensajeOk, setMensajeOk] = useState("");
   const [cargando, setCargando] = useState(true);
-  // Nombre del puesto cuya pestaña está abierta ("" hasta que cargan los puestos).
+  // Id del puesto cuya pestaña está abierta ("" hasta que cargan los puestos).
+  // Se usa el id (no el nombre) porque puede haber búsquedas con el mismo nombre.
   const [puestoActivo, setPuestoActivo] = useState<string>("");
 
   // Formulario para agendar la entrevista en Google Calendar.
@@ -137,7 +140,8 @@ export default function DashboardPage() {
   const [okPuesto, setOkPuesto] = useState("");
 
   // Vista de candidatos: 'todos' (principales, no guardados) o 'guardados'.
-  const [vista, setVista] = useState<"todos" | "guardados">("todos");
+  // todos = búsquedas abiertas · guardados = candidatos guardados · cerradas = búsquedas cerradas (histórico)
+  const [vista, setVista] = useState<"todos" | "guardados" | "cerradas">("todos");
   const [candidatosGuardados, setCandidatosGuardados] = useState<Candidato[]>([]);
   // Mensaje flash (verde/rojo) que se autodescarta a los 3 segundos.
   const [flash, setFlash] = useState<{ texto: string; tipo: "ok" | "error" } | null>(null);
@@ -164,13 +168,15 @@ export default function DashboardPage() {
 
   const cargarPuestos = async () => {
     try {
-      const res = await fetch("/api/puestos");
+      const res = await fetch("/api/puestos?todas=1");
       const data = await leerJSON(res);
       const lista: Puesto[] = data.puestos || [];
       setPuestos(lista);
       // Si la pestaña abierta ya no corresponde a una búsqueda vigente (o es la
       // primera carga), se abre la primera búsqueda.
-      setPuestoActivo((actual) => (lista.some((p) => p.nombre === actual) ? actual : lista[0]?.nombre || ""));
+      setPuestoActivo((actual) =>
+        lista.some((p) => p.id === actual) ? actual : lista.find((p) => p.activo !== false)?.id || ""
+      );
     } catch (error) {
       console.error("Error al cargar puestos:", error);
     }
@@ -348,11 +354,43 @@ export default function DashboardPage() {
     }
   };
 
-  const cambiarVista = (v: "todos" | "guardados") => {
+  const cambiarVista = (v: "todos" | "guardados" | "cerradas") => {
     setVista(v);
+    // Al pasar entre abiertas y cerradas se abre la primera búsqueda de esa lista.
+    if (v !== "guardados") {
+      const lista = puestos.filter((p) => (v === "cerradas" ? p.activo === false : p.activo !== false));
+      setPuestoActivo(lista[0]?.id || "");
+    }
     setSeleccionado(null);
     setFeedback("");
     setMensajeOk("");
+  };
+
+  const cambiarEstadoBusqueda = async (puesto: Puesto, activo: boolean) => {
+    const pregunta = activo
+      ? `¿Reabrir "${puesto.nombre}"? Va a volver a verse en el portal y a recibir postulaciones.`
+      : `¿Cerrar "${puesto.nombre}"? Deja de verse en el portal y nadie más se puede postular. Los candidatos quedan guardados en "Cerradas".`;
+    if (!window.confirm(pregunta)) return;
+    try {
+      const res = await fetch("/api/puestos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: puesto.id, activo }),
+      });
+      const data = await leerJSON(res);
+      if (!res.ok || data.error) {
+        mostrarFlash(data.error || "No se pudo actualizar la búsqueda.", "error");
+        return;
+      }
+      setPuestos((prev) => prev.map((p) => (p.id === puesto.id ? { ...p, activo } : p)));
+      setSeleccionado(null);
+      // Se vuelve a la lista donde quedó la búsqueda, con esa pestaña abierta.
+      setVista(activo ? "todos" : "cerradas");
+      setPuestoActivo(puesto.id);
+      mostrarFlash(activo ? `"${puesto.nombre}" se reabrió.` : `"${puesto.nombre}" se cerró. La encontrás en "Cerradas".`, "ok");
+    } catch {
+      mostrarFlash("No se pudo conectar con el servidor.", "error");
+    }
   };
 
   const crearPuesto = async () => {
@@ -448,6 +486,19 @@ export default function DashboardPage() {
 
   const cambiarEstado = async (nuevoEstado: "en_entrevista" | "seleccionado") => {
     if (!seleccionado) return;
+    // Al seleccionar a alguien, la búsqueda se cierra: ya se cubrió el puesto.
+    const puestoDelCandidato = puestos.find((p) => esDelPuesto(seleccionado, p));
+    if (
+      nuevoEstado === "seleccionado" &&
+      !window.confirm(
+        `Vas a seleccionar a ${seleccionado.nombre}.` +
+          (puestoDelCandidato && puestoDelCandidato.activo !== false
+            ? `\n\nLa búsqueda "${puestoDelCandidato.nombre}" se va a cerrar: deja de verse en el portal y no recibe más postulaciones. Si necesitás más personas, la podés reabrir desde "Cerradas".`
+            : "")
+      )
+    ) {
+      return;
+    }
     setMensajeOk("");
     try {
       const res = await fetch("/api/estado", {
@@ -463,6 +514,22 @@ export default function DashboardPage() {
         setMensajeOk(msg);
         await cargarCandidatos();
         setSeleccionado((prev) => (prev ? { ...prev, estado: nuevoEstado } : null));
+        if (nuevoEstado === "seleccionado" && puestoDelCandidato && puestoDelCandidato.activo !== false) {
+          const cerrado = await fetch("/api/puestos", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: puestoDelCandidato.id, activo: false }),
+          });
+          const r = await leerJSON(cerrado);
+          if (cerrado.ok && !r.error) {
+            setPuestos((prev) => prev.map((p) => (p.id === puestoDelCandidato.id ? { ...p, activo: false } : p)));
+            // La búsqueda pasa a "Cerradas": se sigue mostrando ahí, con el candidato abierto.
+            setVista("cerradas");
+            setMensajeOk(`Candidato seleccionado. La búsqueda "${puestoDelCandidato.nombre}" quedó cerrada y ya no recibe postulaciones.`);
+          } else {
+            setMensajeOk(`Candidato seleccionado, pero no se pudo cerrar la búsqueda: ${r.error}`);
+          }
+        }
       } else {
         setMensajeOk("Error: " + (data.error || "No se pudo actualizar el estado."));
       }
@@ -510,12 +577,19 @@ export default function DashboardPage() {
 
   // Pestañas: sólo las búsquedas vigentes de la tabla `puestos` (las mismas a
   // las que un candidato se puede postular hoy desde el portal).
-  const puestosTabs = Array.from(new Set(puestos.map((p) => p.nombre)));
+  const puestosAbiertos = puestos.filter((p) => p.activo !== false);
+  const puestosCerrados = puestos.filter((p) => p.activo === false);
+  const puestosTabs = vista === "cerradas" ? puestosCerrados : puestosAbiertos;
+  const puestoActual = puestos.find((p) => p.id === puestoActivo);
+
+  // Una postulación pertenece a un puesto por su id; las muy viejas (sin
+  // puesto_id) se asocian por nombre.
+  const esDelPuesto = (c: Candidato, p: Puesto) => (c.puesto_id ? c.puesto_id === p.id : c.puesto === p.nombre);
 
   // Candidatos del puesto activo.
-  const candidatosFiltrados = candidatos.filter((c) => c.puesto === puestoActivo);
+  const candidatosFiltrados = puestoActual ? candidatos.filter((c) => esDelPuesto(c, puestoActual)) : [];
 
-  const contarPorPuesto = (p: string) => candidatos.filter((c) => c.puesto === p).length;
+  const contarPorPuesto = (p: Puesto) => candidatos.filter((c) => esDelPuesto(c, p)).length;
 
   // Lista que se muestra en la columna izquierda según la vista activa.
   // Principales: filtrada por el puesto activo. Guardados: todos los guardados.
@@ -566,6 +640,14 @@ export default function DashboardPage() {
           >
             Guardados ({candidatosGuardados.length})
           </button>
+          <button
+            onClick={() => cambiarVista("cerradas")}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
+              vista === "cerradas" ? "bg-blue-700 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            }`}
+          >
+            Cerradas ({puestosCerrados.length})
+          </button>
         </div>
 
         <div className="flex items-center gap-4">
@@ -605,22 +687,27 @@ export default function DashboardPage() {
 
       {/* Pestañas por puesto — solo en la vista principal (los guardados son
           transversales a los puestos, para futuras búsquedas). */}
-      {vista === "todos" && (
+      {vista !== "guardados" && (
         <div className="bg-white border-b border-slate-200 px-6 md:px-8">
+          {vista === "cerradas" && puestosCerrados.length === 0 && (
+            <p className="max-w-7xl mx-auto py-3 text-sm text-slate-500">
+              No hay búsquedas cerradas. Cuando cierres una, sus candidatos y CVs quedan acá.
+            </p>
+          )}
           <div className="max-w-7xl mx-auto flex gap-1 overflow-x-auto">
             {puestosTabs.map((p) => {
-              const activo = p === puestoActivo;
+              const activo = p.id === puestoActivo;
               return (
                 <button
-                  key={p}
-                  onClick={() => seleccionarPuesto(p)}
+                  key={p.id}
+                  onClick={() => seleccionarPuesto(p.id)}
                   className={`whitespace-nowrap px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
                     activo
                       ? "border-blue-600 text-blue-700"
                       : "border-transparent text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  {p}
+                  {p.nombre}
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                       activo ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
@@ -631,6 +718,60 @@ export default function DashboardPage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Barra de la búsqueda abierta: nombre, estado y acciones sobre la búsqueda. */}
+      {vista !== "guardados" && puestoActual && (
+        <div className="px-6 md:px-8 pt-6">
+          <div
+            className={`max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border px-5 py-4 ${
+              puestoActual.activo === false ? "bg-slate-100 border-slate-200" : "bg-white border-slate-200"
+            }`}
+          >
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900 truncate">{puestoActual.nombre}</h2>
+                <span
+                  className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                    puestoActual.activo === false
+                      ? "bg-slate-200 text-slate-600 border-slate-300"
+                      : "bg-green-50 text-green-700 border-green-200"
+                  }`}
+                >
+                  {puestoActual.activo === false ? "Cerrada" : "Abierta · recibe postulaciones"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {contarPorPuesto(puestoActual)} postulación{contarPorPuesto(puestoActual) === 1 ? "" : "es"}
+                {puestoActual.activo === false
+                  ? " · No se ve en el portal. Los candidatos y CVs quedan guardados acá."
+                  : " · Visible en el portal público."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {puestoActual.activo !== false && (
+                <a
+                  href={`/puestos/${puestoActual.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-semibold text-slate-600 hover:text-blue-700 px-3 py-2"
+                >
+                  Ver en el portal ↗
+                </a>
+              )}
+              <button
+                onClick={() => cambiarEstadoBusqueda(puestoActual, puestoActual.activo === false)}
+                className={`text-sm font-semibold px-4 py-2 rounded-lg transition-colors ${
+                  puestoActual.activo === false
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "bg-red-50 hover:bg-red-100 text-red-700 border border-red-200"
+                }`}
+              >
+                {puestoActual.activo === false ? "Reabrir búsqueda" : "Cerrar búsqueda"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -682,7 +823,7 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     <p className="text-slate-600 font-medium text-sm leading-relaxed">
-                      No hay postulaciones para {puestoActivo}.
+                      No hay postulaciones para {puestoActual?.nombre || "esta búsqueda"}.
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
                       Compartí el link del portal para recibir CVs de esta búsqueda.

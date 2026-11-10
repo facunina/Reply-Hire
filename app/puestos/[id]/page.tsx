@@ -67,11 +67,25 @@ export default async function PuestoPage({ params }: { params: Promise<{ id: str
 
           <aside className="lg:col-span-1">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-24">
-              <h2 className="text-lg font-bold text-slate-900">¿Te interesa esta búsqueda?</h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                Postulate subiendo tu CV en PDF. Te lleva un par de minutos y siempre vas a recibir una respuesta.
-              </p>
-              <AccionesPuesto puestoId={puesto.id as string} />
+              {puesto.activo !== false && (
+                <>
+                  <h2 className="text-lg font-bold text-slate-900">¿Te interesa esta búsqueda?</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                    Postulate subiendo tu CV en PDF. Te lleva un par de minutos y siempre vas a recibir una respuesta.
+                  </p>
+                </>
+              )}
+              {puesto.activo === false ? (
+                <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">Esta búsqueda está cerrada</p>
+                  <p className="mt-1">Ya no recibe postulaciones. Mirá las otras búsquedas activas.</p>
+                  <Link href="/#busquedas" className="mt-3 inline-block font-semibold text-brand-600 hover:underline">
+                    Ver búsquedas activas →
+                  </Link>
+                </div>
+              ) : (
+                <AccionesPuesto puestoId={puesto.id as string} />
+              )}
               <dl className="mt-6 space-y-3 border-t border-slate-200 pt-5 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Área</dt>

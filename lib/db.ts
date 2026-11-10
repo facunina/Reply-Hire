@@ -336,6 +336,8 @@ export interface Puesto {
   beneficios?: string;       // 7. Beneficios y propuesta de valor (¿qué ofrecemos?)
   salario?: string;          // (legacy, opcional)
   created_at?: string;       // la tabla `puestos` usa created_at (en inglés)
+  activo?: boolean;          // false = búsqueda cerrada: no recibe postulaciones
+  cerrado_a?: string | null; // cuándo se cerró
 }
 
 /** Inserta un puesto nuevo y devuelve la fila persistida.
@@ -383,10 +385,10 @@ export async function guardarPuesto(p: Puesto): Promise<Puesto> {
   throw new Error('No se pudo guardar el puesto en Supabase (faltan demasiadas columnas; corré la migración).');
 }
 
-/** Devuelve todos los puestos, los más recientes primero. La tabla `puestos`
+/** Devuelve los puestos, los más recientes primero (por defecto sólo los abiertos). La tabla `puestos`
  *  usa la columna `created_at`. Si no existiera (esquema distinto), reintenta
  *  sin ordenar para no romper el listado. */
-export async function obtenerPuestos(): Promise<Puesto[]> {
+export async function obtenerPuestos(opciones: { incluirCerrados?: boolean } = {}): Promise<Puesto[]> {
   let { data, error } = await getSupabase()
     .from(TABLA_PUESTOS)
     .select('*')
@@ -400,7 +402,25 @@ export async function obtenerPuestos(): Promise<Puesto[]> {
   if (error) {
     throw new Error('No se pudieron leer los puestos de Supabase: ' + error.message);
   }
-  return (data || []) as Puesto[];
+  const lista = (data || []) as Puesto[];
+  // Por defecto sólo las búsquedas abiertas (las que se ven en el portal).
+  return opciones.incluirCerrados ? lista : lista.filter((p) => p.activo !== false);
+}
+
+/** Cierra o reabre una búsqueda. Cerrada, deja de verse en el portal y no
+ *  recibe postulaciones; sus candidatos se conservan. */
+export async function cambiarEstadoPuesto(id: string, activo: boolean): Promise<Puesto> {
+  const { data, error } = await getSupabase()
+    .from(TABLA_PUESTOS)
+    .update({ activo, cerrado_a: activo ? null : new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error('No se pudo actualizar la búsqueda en Supabase: ' + (error?.message || 'no existe'));
+  }
+  return data as Puesto;
 }
 
 /** Obtiene un puesto por id, o null si no existe. */

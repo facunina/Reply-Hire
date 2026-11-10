@@ -10,6 +10,8 @@ create table if not exists public.puestos (
   id             uuid primary key default gen_random_uuid(),
   nombre         text not null default '',
   area           text not null default 'Otros',   -- sección del portal (lib/areas.ts)
+  activo         boolean not null default true,    -- false = búsqueda cerrada
+  cerrado_a      timestamptz,
   sobre_nosotros text default '',
   mision         text default '',
   actividades    text default '',
@@ -22,6 +24,8 @@ create table if not exists public.puestos (
 
 -- Bases creadas antes de que existiera la columna `area`.
 alter table public.puestos add column if not exists area text not null default 'Otros';
+alter table public.puestos add column if not exists activo boolean not null default true;
+alter table public.puestos add column if not exists cerrado_a timestamptz;
 
 -- ─── Tabla candidatos ────────────────────────────────────────────────────────
 -- Estados: pendiente → en_entrevista → seleccionado | rechazado_cv | rechazado_entrevista
