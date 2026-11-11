@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { destinoEmail } from '@/lib/email';
 import { Resend } from 'resend';
 import { obtenerCandidato, actualizarCandidato } from '@/lib/db';
+import { validarDecision } from '@/lib/reglas';
 import { registrarEvento } from '@/lib/eventos';
 
 export async function POST(request: Request) {
@@ -33,6 +34,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El candidato no tiene un email válido." }, { status: 400 });
     }
 
+    // Reglas de negocio ANTES de mandar el mail: un rechazo sólo es válido desde
+    // la etapa que corresponde y con el análisis de IA terminado.
+    const estadoRechazo = estadoFinal === "rechazado_entrevista" ? "rechazado_entrevista" : "rechazado_cv";
+    const motivo = validarDecision(candidato, estadoRechazo);
+    if (motivo) {
+      return NextResponse.json({ error: motivo }, { status: 409 });
+    }
+
     // Crear Resend
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey || apiKey === "REEMPLAZAR") {
@@ -62,7 +71,7 @@ export async function POST(request: Request) {
     }
 
     // Actualizar candidato
-    const estadoFinalReal = estadoFinal || "rechazado_cv";
+    const estadoFinalReal = estadoRechazo;
     await actualizarCandidato(id, {
       estado: estadoFinalReal,
       feedback,

@@ -514,21 +514,14 @@ export default function DashboardPage() {
         setMensajeOk(msg);
         await cargarCandidatos();
         setSeleccionado((prev) => (prev ? { ...prev, estado: nuevoEstado } : null));
-        if (nuevoEstado === "seleccionado" && puestoDelCandidato && puestoDelCandidato.activo !== false) {
-          const cerrado = await fetch("/api/puestos", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: puestoDelCandidato.id, activo: false }),
-          });
-          const r = await leerJSON(cerrado);
-          if (cerrado.ok && !r.error) {
-            setPuestos((prev) => prev.map((p) => (p.id === puestoDelCandidato.id ? { ...p, activo: false } : p)));
-            // La búsqueda pasa a "Cerradas": se sigue mostrando ahí, con el candidato abierto.
-            setVista("cerradas");
-            setMensajeOk(`Candidato seleccionado. La búsqueda "${puestoDelCandidato.nombre}" quedó cerrada y ya no recibe postulaciones.`);
-          } else {
-            setMensajeOk(`Candidato seleccionado, pero no se pudo cerrar la búsqueda: ${r.error}`);
-          }
+        // El servidor cierra la búsqueda al seleccionar (regla en lib/reglas.ts);
+        // acá sólo se refleja en pantalla.
+        const cerrada = data.busquedaCerrada as { id: string; nombre: string } | null;
+        if (cerrada) {
+          setPuestos((prev) => prev.map((p) => (p.id === cerrada.id ? { ...p, activo: false } : p)));
+          // La búsqueda pasa a "Cerradas": se sigue mostrando ahí, con el candidato abierto.
+          setVista("cerradas");
+          setMensajeOk(`Candidato seleccionado. La búsqueda "${cerrada.nombre}" quedó cerrada y ya no recibe postulaciones.`);
         }
       } else {
         setMensajeOk("Error: " + (data.error || "No se pudo actualizar el estado."));
