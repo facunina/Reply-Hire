@@ -1,0 +1,34 @@
+name: Backup diario
+
+# Todos los días a las 06:00 UTC (03:00 en Uruguay) y a mano desde la pestaña Actions.
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Backup cifrado (tablas + cuentas + CVs)
+        run: node scripts/backup.mjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      # El archivo va CIFRADO: el repo es público y sin BACKUP_PASSPHRASE no se puede leer.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_number }}
+          path: backups/*.rhbk
+          retention-days: 30
+          if-no-files-found: error
