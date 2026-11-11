@@ -26,6 +26,8 @@ create table if not exists public.puestos (
 alter table public.puestos add column if not exists area text not null default 'Otros';
 alter table public.puestos add column if not exists activo boolean not null default true;
 alter table public.puestos add column if not exists cerrado_a timestamptz;
+-- Requisitos uno por uno: [{ "texto": "...", "excluyente": true|false }]
+alter table public.puestos add column if not exists requisitos_lista jsonb not null default '[]'::jsonb;
 
 -- ─── Tabla candidatos ────────────────────────────────────────────────────────
 -- Estados: pendiente → en_entrevista → seleccionado | rechazado_cv | rechazado_entrevista
@@ -66,6 +68,8 @@ alter table public.candidatos add column if not exists entrevista_inicio timesta
 alter table public.candidatos add column if not exists entrevista_evento_id text default '';
 alter table public.candidatos add column if not exists entrevista_link text default '';
 alter table public.candidatos add column if not exists entrevista_meet text default '';
+-- Evaluación requisito por requisito: { requisitos: [...], tareas: [...], puntaje: {...} } (lib/puntaje.ts)
+alter table public.candidatos add column if not exists evaluacion jsonb;
 create index if not exists candidatos_usuario_id_idx on public.candidatos (usuario_id);
 -- Una cuenta no puede postularse dos veces a la misma búsqueda (lo garantiza la
 -- base, no sólo la app). Las postulaciones viejas sin cuenta (NULL) no chocan.
@@ -94,20 +98,17 @@ alter table public.puestos    enable row level security;
 alter table public.candidatos enable row level security;
 alter table public.eventos    enable row level security;
 
--- ─── Storage: bucket público "cvs" para los PDF ─────────────────────────────
+-- ─── Storage: bucket PRIVADO "cvs" para los PDF ─────────────────────────────
+-- Nadie puede abrir un CV por URL directa. Subir lo hace sólo el servidor
+-- (service_role) y para verlo el panel pide un link firmado que vence en
+-- 5 minutos (GET /api/candidato/cv, sólo equipo).
 insert into storage.buckets (id, name, public)
-values ('cvs', 'cvs', true)
-on conflict (id) do update set public = true;
+values ('cvs', 'cvs', false)
+on conflict (id) do update set public = false;
 
 drop policy if exists "cvs_select_anon" on storage.objects;
 drop policy if exists "cvs_insert_anon" on storage.objects;
 drop policy if exists "cvs_update_anon" on storage.objects;
--- Subir y reemplazar PDFs lo hace sólo el servidor (service_role); el público
--- únicamente puede leerlos por su URL.
-
-create policy "cvs_select_anon" on storage.objects
-  for select to anon, authenticated using (bucket_id = 'cvs');
-
 
 -- ─── Puesto de ejemplo (opcional, para poder postular apenas se levanta) ────
 insert into public.puestos (nombre, area, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios)

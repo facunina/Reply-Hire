@@ -17,6 +17,7 @@ interface Postulacion {
   creado_a: string;
   entrevista_inicio?: string | null;
   entrevista_meet?: string | null;
+  busqueda_cerrada?: boolean;
 }
 
 interface Puesto {
@@ -137,7 +138,8 @@ export default function MiCuentaPage() {
                   ) : (
                     <ul className="mt-4 divide-y divide-slate-100">
                       {postulaciones.map((p) => {
-                        const est = estadoCandidato(p.estado);
+                        const est = estadoCandidato(p.estado, p.busqueda_cerrada);
+                        const finalizada = est.texto === "Búsqueda finalizada";
                         const abierta = p.puesto_id && puestosAbiertos.has(p.puesto_id);
                         return (
                           <li key={p.id} className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -150,7 +152,18 @@ export default function MiCuentaPage() {
                                 <p className="font-semibold">{p.puesto || "Búsqueda"}</p>
                               )}
                               <p className="text-sm text-slate-500">Postulado el {fecha(p.creado_a)}</p>
-                              {p.estado === "en_entrevista" && p.entrevista_inicio && (
+                              <p className="mt-1 text-sm text-slate-600">
+                                {est.mensaje}
+                                {finalizada && (
+                                  <>
+                                    {" "}
+                                    <Link href="/#busquedas" className="font-semibold text-brand-600 hover:underline">
+                                      Ver búsquedas activas →
+                                    </Link>
+                                  </>
+                                )}
+                              </p>
+                              {p.estado === "en_entrevista" && !finalizada && p.entrevista_inicio && (
                                 <p className="mt-1 text-sm font-medium text-brand-700">
                                   📅 Entrevista:{" "}
                                   {new Date(p.entrevista_inicio).toLocaleString("es-UY", {

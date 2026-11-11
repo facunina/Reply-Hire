@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El cuerpo de la solicitud debe ser un JSON válido." }, { status: 400 });
     }
 
-    const { nombre, area, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios } = body;
+    const { nombre, area, sobre_nosotros, mision, actividades, requisitos, requisitos_lista, modalidad, beneficios } = body;
 
     if (!nombre || typeof nombre !== "string" || nombre.trim() === "") {
       return NextResponse.json({ error: "El nombre del puesto es obligatorio." }, { status: 400 });
@@ -52,6 +52,16 @@ export async function POST(request: Request) {
     // Normaliza un campo opcional de texto a string recortado (o "").
     const limpiar = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
+    // Requisitos uno por uno, con su marca de excluyente (máx. 12). Si vienen,
+    // el texto libre `requisitos` se arma a partir de ellos (para el portal).
+    const listaReq = (Array.isArray(requisitos_lista) ? requisitos_lista : [])
+      .filter((r: any) => r && typeof r.texto === "string" && r.texto.trim())
+      .slice(0, 12)
+      .map((r: any) => ({ texto: r.texto.trim().slice(0, 200), excluyente: !!r.excluyente }));
+    const textoRequisitos = listaReq.length
+      ? listaReq.map((r: { texto: string; excluyente: boolean }) => r.texto + (r.excluyente ? " (excluyente)" : "")).join("\n")
+      : limpiar(requisitos);
+
     const id = randomUUID();
     const puesto = await guardarPuesto({
       id,
@@ -60,7 +70,8 @@ export async function POST(request: Request) {
       sobre_nosotros: limpiar(sobre_nosotros),
       mision: limpiar(mision),
       actividades: limpiar(actividades),
-      requisitos: limpiar(requisitos),
+      requisitos: textoRequisitos,
+      requisitos_lista: listaReq,
       modalidad: limpiar(modalidad),
       beneficios: limpiar(beneficios),
     });

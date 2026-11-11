@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { obtenerCandidato, obtenerPuesto, actualizarCandidato } from '@/lib/db';
+import { obtenerCandidato, actualizarCandidato } from '@/lib/db';
+import { requisitosDelCandidato } from '@/lib/requisitos';
 import { evaluarJSON } from '@/lib/ai';
 import { PROMPT_PREGUNTAS, sanitizarTextoCV } from '@/lib/prompts';
 import { registrarEvento } from '@/lib/eventos';
@@ -40,10 +41,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No se encontró el candidato.' }, { status: 404 });
   }
 
-  const puesto = candidato.puesto_id ? await obtenerPuesto(candidato.puesto_id) : null;
-  const requisitos = puesto
-    ? `Puesto: ${puesto.nombre}. Responsabilidades: ${puesto.actividades || 'No especificadas'}. Requisitos: ${puesto.requisitos || 'No especificados'}.`
-    : `Puesto: ${candidato.puesto || 'No especificado'}.`;
+  const requisitos = await requisitosDelCandidato(candidato);
 
   const inicio = Date.now();
   let respuesta: any;

@@ -23,6 +23,7 @@ interface Candidato {
   posible_inyeccion?: boolean;
   mensaje?: string;
   preguntas_entrevista?: string;
+  evaluacion?: Evaluacion | null;
   analisis?: string; // procesando | listo | sin_datos | error
   entrevista_inicio?: string | null;
   entrevista_link?: string;
@@ -67,6 +68,20 @@ async function leerJSON(res: Response): Promise<any> {
   return data;
 }
 
+interface ItemEvaluado {
+  texto: string;
+  cumple: "si" | "parcial" | "no";
+  evidencia: string;
+  excluyente?: boolean;
+}
+interface Evaluacion {
+  requisitos: ItemEvaluado[];
+  tareas: ItemEvaluado[];
+  puntaje: { score: number; requisitos_pct: number; tareas_pct: number | null; tope: number | null; motivo_tope: string | null };
+}
+const ICONO_CUMPLE = { si: "✅", parcial: "⚠️", no: "❌" } as const;
+const TEXTO_CUMPLE = { si: "Cumple", parcial: "Parcial", no: "No cumple" } as const;
+
 interface PreguntaEntrevista {
   pregunta: string;
   objetivo: string;
@@ -105,6 +120,8 @@ const PUESTO_VACIO = {
   mision: "",
   actividades: "",
   requisitos: "",
+  // Requisitos uno por uno; los excluyentes ponen tope al puntaje (lib/puntaje.ts).
+  requisitos_lista: [{ texto: "", excluyente: false }] as { texto: string; excluyente: boolean }[],
   modalidad: "",
   beneficios: "",
 };
@@ -126,6 +143,7 @@ export default function DashboardPage() {
   const [agendando, setAgendando] = useState(false);
 
   const [reanalizando, setReanalizando] = useState(false);
+  const [verEvidencia, setVerEvidencia] = useState(true);
 
   // Preguntas de entrevista generadas por la IA, por id de candidato.
   const [preguntas, setPreguntas] = useState<Record<string, PreguntaEntrevista[]>>({});
@@ -1007,6 +1025,68 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              {/* Evaluación requisito por requisito (IA) + cómo se calculó el puntaje */}
+              {analisisDe(seleccionado) === "listo" && seleccionado.evaluacion && (
+                <div className="border border-slate-200 rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-bold text-slate-800">Evaluación por requisito</h4>
+                    <button
+                      onClick={() => setVerEvidencia((v) => !v)}
+                      className="text-xs font-semibold text-blue-700 hover:underline"
+                    >
+                      {verEvidencia ? "Ocultar evidencia" : "Ver evidencia"}
+                    </button>
+                  </div>
+
+                  {[
+                    { titulo: "Requisitos", items: seleccionado.evaluacion.requisitos },
+                    { titulo: "Experiencia en las tareas del puesto", items: seleccionado.evaluacion.tareas },
+                  ]
+                    .filter((g) => g.items && g.items.length > 0)
+                    .map((g) => (
+                      <div key={g.titulo}>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">{g.titulo}</p>
+                        <ul className="space-y-2">
+                          {g.items.map((it, k) => (
+                            <li key={k} className="text-sm">
+                              <div className="flex items-start gap-2">
+                                <span aria-label={TEXTO_CUMPLE[it.cumple]} title={TEXTO_CUMPLE[it.cumple]}>
+                                  {ICONO_CUMPLE[it.cumple]}
+                                </span>
+                                <div className="min-w-0">
+                                  <span className="text-slate-800 font-medium">{it.texto}</span>
+                                  {it.excluyente && (
+                                    <span className="ml-2 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">
+                                      Excluyente
+                                    </span>
+                                  )}
+                                  {verEvidencia && <p className="text-xs text-slate-500 mt-0.5">{it.evidencia}</p>}
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Postulaciones analizadas antes de la evaluación por requisito */}
+              {analisisDe(seleccionado) === "listo" && !seleccionado.evaluacion && seleccionado.estado === "pendiente" && (
+                <div className="border border-dashed border-slate-300 rounded-xl p-4 text-center">
+                  <p className="text-sm text-slate-600">
+                    Esta postulación se evaluó con el método anterior (global).
+                  </p>
+                  <button
+                    onClick={() => reanalizar(seleccionado.id)}
+                    disabled={reanalizando}
+                    className="mt-2 text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 disabled:opacity-60 rounded-lg px-3 py-1.5"
+                  >
+                    {reanalizando ? "Evaluando…" : "Evaluar requisito por requisito"}
+                  </button>
+                </div>
+              )}
+
               {/* Strengths & Weaknesses */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Strengths */}
@@ -1063,7 +1143,7 @@ export default function DashboardPage() {
               {/* CV original — el reclutador abre o descarga el PDF real */}
               {seleccionado.cv_url ? (
                 <a
-                  href={seleccionado.cv_url}
+                  href={`/api/candidato/cv?id=${seleccionado.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors"
@@ -1440,24 +1520,75 @@ export default function DashboardPage() {
                   rows={3}
                   value={nuevoPuesto.actividades}
                   onChange={(e) => setNuevoPuesto({ ...nuevoPuesto, actividades: e.target.value })}
-                  placeholder="Principales responsabilidades y tareas del día a día…"
+                  placeholder="Una tarea por línea. La IA revisa si el candidato ya hizo cada una…"
                   className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm text-slate-900"
                 />
               </div>
 
-              {/* 5. Requisitos del Perfil */}
+              {/* 5. Requisitos del Perfil — uno por línea; los excluyentes ponen tope al puntaje */}
               <div>
-                <label htmlFor="np-requisitos" className="block text-sm font-medium text-slate-700">
-                  Requisitos del Perfil <span className="text-slate-400 font-normal">— ¿qué buscamos?</span>
-                </label>
-                <textarea
-                  id="np-requisitos"
-                  rows={3}
-                  value={nuevoPuesto.requisitos}
-                  onChange={(e) => setNuevoPuesto({ ...nuevoPuesto, requisitos: e.target.value })}
-                  placeholder="Experiencia, habilidades técnicas, idiomas, formación…"
-                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm text-slate-900"
-                />
+                <p className="block text-sm font-medium text-slate-700">
+                  Requisitos del Perfil <span className="text-slate-400 font-normal">— uno por fila</span>
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  La IA evalúa cada requisito por separado. Marcá como <strong>excluyente</strong> lo indispensable: si el
+                  candidato no lo cumple, queda por debajo de los que sí.
+                </p>
+                <div className="mt-2 space-y-2">
+                  {nuevoPuesto.requisitos_lista.map((r, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={r.texto}
+                        onChange={(e) => {
+                          const lista = [...nuevoPuesto.requisitos_lista];
+                          lista[idx] = { ...lista[idx], texto: e.target.value };
+                          setNuevoPuesto({ ...nuevoPuesto, requisitos_lista: lista });
+                        }}
+                        placeholder={idx === 0 ? "Ej.: 2+ años de experiencia en marketing digital" : "Otro requisito…"}
+                        aria-label={`Requisito ${idx + 1}`}
+                        className="flex-1 px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm text-slate-900"
+                      />
+                      <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={r.excluyente}
+                          onChange={(e) => {
+                            const lista = [...nuevoPuesto.requisitos_lista];
+                            lista[idx] = { ...lista[idx], excluyente: e.target.checked };
+                            setNuevoPuesto({ ...nuevoPuesto, requisitos_lista: lista });
+                          }}
+                        />
+                        Excluyente
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const lista = nuevoPuesto.requisitos_lista.filter((_, k) => k !== idx);
+                          setNuevoPuesto({ ...nuevoPuesto, requisitos_lista: lista.length ? lista : [{ texto: "", excluyente: false }] });
+                        }}
+                        className="text-slate-400 hover:text-red-600 px-1 text-lg leading-none"
+                        aria-label={`Quitar requisito ${idx + 1}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {nuevoPuesto.requisitos_lista.length < 12 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNuevoPuesto({
+                        ...nuevoPuesto,
+                        requisitos_lista: [...nuevoPuesto.requisitos_lista, { texto: "", excluyente: false }],
+                      })
+                    }
+                    className="mt-2 text-sm font-semibold text-blue-700 hover:underline"
+                  >
+                    + Agregar requisito
+                  </button>
+                )}
               </div>
 
               {/* 6. Modalidad y Ubicación */}

@@ -43,6 +43,7 @@ export interface Candidato {
   mensaje?: string;             // texto libre que el candidato le deja al reclutador
   preguntas_entrevista?: string; // JSON con las preguntas sugeridas por la IA
   analisis?: string;            // procesando | listo | sin_datos | error (ver lib/analisis.ts)
+  evaluacion?: any;             // evaluación requisito por requisito (ver lib/analisis.ts y lib/puntaje.ts)
   entrevista_inicio?: string | null;   // fecha y hora de la entrevista agendada
   entrevista_evento_id?: string;       // id del evento en Google Calendar (para reprogramar)
   entrevista_link?: string;            // enlace al evento en Google Calendar
@@ -86,6 +87,7 @@ const COLUMNAS = [
   'mensaje',
   'preguntas_entrevista',
   'analisis',
+  'evaluacion',
   'entrevista_inicio',
   'entrevista_evento_id',
   'entrevista_link',
@@ -154,6 +156,7 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
   if (c.mensaje !== undefined) fila.mensaje = c.mensaje || '';
   if (c.preguntas_entrevista !== undefined) fila.preguntas_entrevista = c.preguntas_entrevista || '';
   if (c.analisis !== undefined) fila.analisis = c.analisis || 'listo';
+  if (c.evaluacion !== undefined) fila.evaluacion = c.evaluacion ?? null;
   if (c.entrevista_inicio !== undefined) fila.entrevista_inicio = c.entrevista_inicio || null;
   if (c.entrevista_evento_id !== undefined) fila.entrevista_evento_id = c.entrevista_evento_id || '';
   if (c.entrevista_link !== undefined) fila.entrevista_link = c.entrevista_link || '';
@@ -236,18 +239,23 @@ export async function obtenerPostulacionesDeUsuario(usuarioId: string): Promise<
   {
     id: string; puesto: string; puesto_id: string | null; estado: string; creado_a: string;
     entrevista_inicio: string | null; entrevista_meet: string | null;
+    busqueda_cerrada: boolean;
   }[]
 > {
+  // `puestos(activo)` trae, por la clave foránea puesto_id, si la búsqueda sigue abierta.
   const { data, error } = await getSupabase()
     .from(TABLA)
-    .select('id, puesto, puesto_id, estado, creado_a, entrevista_inicio, entrevista_meet')
+    .select('id, puesto, puesto_id, estado, creado_a, entrevista_inicio, entrevista_meet, puestos(activo)')
     .eq('usuario_id', usuarioId)
     .order('creado_a', { ascending: false });
 
   if (error) {
     throw new Error('No se pudieron leer las postulaciones de Supabase: ' + error.message);
   }
-  return data || [];
+  return (data || []).map(({ puestos, ...p }: any) => ({
+    ...p,
+    busqueda_cerrada: puestos?.activo === false,
+  }));
 }
 
 /** Indica si una cuenta de candidato ya se postuló a un puesto determinado. */
@@ -299,8 +307,9 @@ export async function eliminarCandidato(id: string): Promise<void> {
 }
 
 /**
- * Sube el PDF original del CV a Supabase Storage y devuelve su URL pública.
- * Requiere un bucket público llamado `cvs` con política de subida para `anon`.
+ * Sube el PDF original del CV a Supabase Storage (bucket PRIVADO `cvs`) y
+ * devuelve la ruta del archivo dentro del bucket. El PDF no tiene URL pública:
+ * para verlo se pide un link temporal con `linkTemporalCV`.
  */
 export async function subirCV(id: string, buffer: Buffer): Promise<string> {
   const ruta = `${id}.pdf`;
@@ -312,12 +321,28 @@ export async function subirCV(id: string, buffer: Buffer): Promise<string> {
   if (error) {
     throw new Error(
       `No se pudo subir el PDF a Supabase Storage (bucket "${BUCKET_CV}"): ${error.message}. ` +
-      `Verificá que el bucket exista, sea público y tenga políticas de subida/lectura para el rol anon.`
+      `Verificá que el bucket exista y que SUPABASE_SERVICE_KEY esté configurada.`
     );
   }
+  return ruta;
+}
 
-  const { data } = getSupabase().storage.from(BUCKET_CV).getPublicUrl(ruta);
-  return data.publicUrl;
+/** Vigencia de los links para abrir un CV. */
+export const VIGENCIA_LINK_CV_SEG = 5 * 60;
+
+/**
+ * Link temporal (firmado) para abrir el CV de un candidato. Vence a los pocos
+ * minutos: aunque alguien lo copie, deja de servir enseguida.
+ */
+export async function linkTemporalCV(candidatoId: string): Promise<string> {
+  const { data, error } = await getSupabase()
+    .storage
+    .from(BUCKET_CV)
+    .createSignedUrl(`${candidatoId}.pdf`, VIGENCIA_LINK_CV_SEG);
+  if (error || !data?.signedUrl) {
+    throw new Error('No se pudo generar el link del CV: ' + (error?.message || 'sin respuesta'));
+  }
+  return data.signedUrl;
 }
 
 // ─── Puestos ─────────────────────────────────────────────────────────────────
@@ -333,6 +358,7 @@ export interface Puesto {
   mision?: string;           // 3. Misión del puesto (el "para qué")
   actividades?: string;      // 4. Responsabilidades y tareas (¿qué hará?)
   requisitos?: string;       // 5. Requisitos del perfil (¿qué buscamos?)
+  requisitos_lista?: { texto: string; excluyente: boolean }[]; // requisitos uno por uno (con marca de excluyente)
   modalidad?: string;        // 6. Modalidad y ubicación
   beneficios?: string;       // 7. Beneficios y propuesta de valor (¿qué ofrecemos?)
   salario?: string;          // (legacy, opcional)
@@ -354,6 +380,7 @@ export async function guardarPuesto(p: Puesto): Promise<Puesto> {
     mision: p.mision || '',
     actividades: p.actividades || '',
     requisitos: p.requisitos || '',
+    requisitos_lista: Array.isArray(p.requisitos_lista) ? p.requisitos_lista : [],
     modalidad: p.modalidad || '',
     beneficios: p.beneficios || '',
     salario: p.salario || '',
@@ -364,7 +391,7 @@ export async function guardarPuesto(p: Puesto): Promise<Puesto> {
   // Columnas opcionales que pueden no existir si falta la migración. El id,
   // nombre, actividades, requisitos y salario son del esquema original y no se
   // descartan: si fallan, es un error real.
-  const descartables = new Set(['area', 'sobre_nosotros', 'mision', 'modalidad', 'beneficios']);
+  const descartables = new Set(['area', 'requisitos_lista', 'sobre_nosotros', 'mision', 'modalidad', 'beneficios']);
 
   for (let intento = 0; intento < 6; intento++) {
     const { data, error } = await getSupabase()

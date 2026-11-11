@@ -6,13 +6,13 @@ Guía paso a paso para probar **todas** las funcionalidades de ReplyHire (portal
 
 ## 0. Datos que vas a necesitar
 
-### Credenciales (definidas en `.env.local`)
-| Rol | Usuario | Contraseña |
-|-----|---------|------------|
-| Reclutador | `reclutador` | `reclutador123` |
-| Administrador | `admin` | `admin123` |
+### Cuentas del equipo (Supabase Auth)
+| Rol | Email |
+|-----|-------|
+| Reclutador | `reclutador@replyhire.test` |
+| Administrador | `admin@replyhire.test` |
 
-> ⚠️ Son credenciales de desarrollo. Para producción cambialas por valores fuertes en las Environment Variables de Vercel.
+> 🔒 Las contraseñas **no se escriben en el repositorio**: las tiene el responsable del grupo. El rol de cada cuenta está en `app_metadata.rol` (ver `supabase/roles.sql`).
 
 ### URLs en local
 | Interfaz | URL | Acceso |
@@ -114,7 +114,7 @@ Si el selector "Puesto al que te postulás" dice *"Por el momento no hay búsque
 
 > Requiere login como **reclutador** o **admin**.
 
-1. Andá a http://localhost:3000/login e ingresá con `reclutador` / `reclutador123`.
+1. Andá a http://localhost:3000/login e ingresá con la cuenta `reclutador@replyhire.test`.
 2. **Resultado esperado**: te redirige a `/dashboard`.
 
 ### 4.1 — Crear un nuevo puesto
@@ -167,7 +167,7 @@ Si el selector "Puesto al que te postulás" dice *"Por el momento no hay búsque
 
 ### 5.1 — Loguearse como admin
 1. Si estás logueado como reclutador, **Cerrar sesión** primero.
-2. Andá a `/login` e ingresá con `admin` / `admin123`.
+2. Andá a `/login` e ingresá con la cuenta `admin@replyhire.test`.
 3. **Resultado esperado**: te redirige a **`/admin`** (no al dashboard).
 
 ### 5.2 — Métricas que deben aparecer
@@ -218,7 +218,7 @@ Probá cada punto y marcá ✅:
 ## 7. Resumen de archivos y datos de prueba
 
 - **CVs**: `cv_bueno.pdf`, `cv_flojo.pdf`, `cv_vacio.pdf` (en blanco/escaneado), `cv_inyeccion.pdf` (con la orden maliciosa). Se crean en Google Docs/Word → exportar a PDF, o con plantillas gratuitas.
-- **Credenciales**: reclutador → `reclutador` / `reclutador123`; admin → `admin` / `admin123`.
+- **Cuentas del equipo**: `reclutador@replyhire.test` y `admin@replyhire.test` (contraseñas fuera del repositorio).
 - **URLs**: `/postular` (público), `/login`, `/dashboard` (reclutador/admin), `/admin` (solo admin).
 - **Verificación de emails**: Resend → *Logs* (o usar como email de candidato el de tu cuenta de Resend).
 - **Verificación de datos**: Supabase → Table Editor → `candidatos`, `puestos`, `eventos`.

@@ -1,6 +1,8 @@
 import { analizarJSON, evaluarJSON } from '@/lib/ai';
-import { obtenerCandidato, obtenerPuesto, actualizarCandidato } from '@/lib/db';
-import { PROMPT_EXTRACCION, PROMPT_SCORING, sanitizarTextoCV, REQUISITOS_PUESTO } from '@/lib/prompts';
+import { obtenerCandidato, actualizarCandidato } from '@/lib/db';
+import { requisitosDelCandidato, puestoDelCandidato, listaRequisitos, listaTareas } from '@/lib/requisitos';
+import { calcularPuntaje, type Cumple, type ItemEvaluado } from '@/lib/puntaje';
+import { PROMPT_EXTRACCION, PROMPT_SCORING, PROMPT_EVALUACION, sanitizarTextoCV } from '@/lib/prompts';
 import { registrarEvento } from '@/lib/eventos';
 
 // ── Análisis del CV con IA (en segundo plano) ────────────────────────────────
@@ -47,18 +49,7 @@ export async function analizarCandidato(id: string, textoCV?: string): Promise<E
   // reemplazan por un marcador); el original queda guardado en la base.
   const textoSaneado = sanitizarTextoCV(textoCV ?? candidato.cv_texto ?? '');
 
-  let requisitos = REQUISITOS_PUESTO;
-  if (candidato.puesto_id) {
-    const puesto = await obtenerPuesto(candidato.puesto_id).catch(() => null);
-    if (puesto) {
-      requisitos =
-        'Puesto: ' + puesto.nombre +
-        '. Misión: ' + (puesto.mision || 'No especificada') +
-        '. Responsabilidades: ' + (puesto.actividades || 'No especificadas') +
-        '. Requisitos: ' + (puesto.requisitos || 'No especificados') +
-        '. Modalidad: ' + (puesto.modalidad || 'No especificada') + '.';
-    }
-  }
+  const requisitos = await requisitosDelCandidato(candidato);
 
   const iaInicio = Date.now();
   try {
@@ -79,7 +70,43 @@ export async function analizarCandidato(id: string, textoCV?: string): Promise<E
       });
     }
 
-    // Agente 2.b — scoring contra los requisitos del puesto elegido.
+    // Agente 2.b — evaluación REQUISITO POR REQUISITO (si el puesto los tiene).
+    // La IA dictamina cada ítem con evidencia y el puntaje sale de la fórmula de
+    // lib/puntaje.ts. Si el puesto no tiene requisitos ni tareas cargados, se
+    // usa la evaluación global de abajo.
+    const puesto = await puestoDelCandidato(candidato);
+    const reqs = puesto ? listaRequisitos(puesto) : [];
+    const tareas = puesto ? listaTareas(puesto) : [];
+    if (puesto && (reqs.length > 0 || tareas.length > 0)) {
+      const r: any = await evaluarJSON(
+        PROMPT_EVALUACION(puesto.nombre, reqs, tareas, JSON.stringify(perfil), textoSaneado.substring(0, 12000))
+      );
+      await registrarEvento('llamada_ia', 'extraccion_scoring', { conexion: 'ia', exito: true, latencia_ms: Date.now() - iaInicio });
+
+      // Se normaliza lo que devuelve la IA: cada ítem del puesto tiene que tener
+      // dictamen; si falta, se toma como "no" (nunca se asume que cumple).
+      const dictamen = (lista: unknown, idx: number, prefijo: string) => {
+        const arr = Array.isArray(lista) ? lista : [];
+        const item = arr.find((x: any) => String(x?.id || '').toUpperCase() === `${prefijo}${idx + 1}`) ?? arr[idx];
+        const cumple: Cumple = ['si', 'parcial', 'no'].includes(item?.cumple) ? item.cumple : 'no';
+        return { cumple, evidencia: recortar(item?.evidencia || 'La IA no encontró evidencia en el CV.', 200) };
+      };
+      const reqEval: ItemEvaluado[] = reqs.map((q, i) => ({ texto: q.texto, excluyente: q.excluyente, ...dictamen(r.requisitos, i, 'R') }));
+      const tarEval: ItemEvaluado[] = tareas.map((t, i) => ({ texto: t, ...dictamen(r.tareas, i, 'T') }));
+      const puntaje = calcularPuntaje(reqEval, tarEval);
+
+      const estado = await marcar('listo', {
+        score: puntaje.score,
+        fortalezas: limitarLista(r.fortalezas),
+        brechas: limitarLista(r.brechas),
+        resumen: recortar(r.resumen_evaluacion, 480),
+        evaluacion: { requisitos: reqEval, tareas: tarEval, puntaje },
+      });
+      await registrarEvento('postulacion_analizada', candidato.nombre, { id, puesto: candidato.puesto, score: puntaje.score });
+      return estado;
+    }
+
+    // Evaluación global (puestos sin requisitos ni tareas cargados).
     const analisis: any = await evaluarJSON(
       PROMPT_SCORING(JSON.stringify(perfil), requisitos, textoSaneado.substring(0, 12000))
     );
@@ -94,6 +121,7 @@ export async function analizarCandidato(id: string, textoCV?: string): Promise<E
       fortalezas: limitarLista(analisis.fortalezas),
       brechas: limitarLista(analisis.brechas),
       resumen: recortar(analisis.resumen_evaluacion, 480),
+      evaluacion: null,
     });
     await registrarEvento('postulacion_analizada', candidato.nombre, { id, puesto: candidato.puesto, score });
     return estado;

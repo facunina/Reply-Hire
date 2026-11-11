@@ -68,7 +68,7 @@ export default async function PruebaPage() {
                     <td className="px-4 py-3 whitespace-nowrap">{fecha(c.creado_a)}</td>
                     <td className="px-4 py-3">
                       {c.cv_url ? (
-                        <a href={c.cv_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                        <a href={`/api/candidato/cv?id=${c.id}`} target="_blank" rel="noreferrer" className="text-blue-600 underline">
                           PDF
                         </a>
                       ) : (

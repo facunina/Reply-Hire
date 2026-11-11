@@ -166,7 +166,9 @@ async function llamarModelo(
             ...(json ? { systemInstruction: SYSTEM_JSON } : {}),
             generationConfig: {
               maxOutputTokens: MAX_TOKENS_GEMINI,
-              ...(json ? { responseMimeType: "application/json" } : {}),
+              // En las evaluaciones (JSON) temperatura 0: el mismo CV recibe
+              // siempre los mismos dictámenes. Los textos libres (mails) varían.
+              ...(json ? { responseMimeType: "application/json", temperature: 0 } : {}),
             },
           },
           { timeout: TIMEOUT_GEMINI_MS }
@@ -194,7 +196,7 @@ async function llamarModelo(
   const message = await getAnthropic().messages.create({
     model: MODELOS.anthropic[tarea],
     max_tokens: maxTokens,
-    ...(json ? { system: SYSTEM_JSON } : {}),
+    ...(json ? { system: SYSTEM_JSON, temperature: 0 } : {}),
     messages: [{ role: "user", content: prompt }],
   });
 

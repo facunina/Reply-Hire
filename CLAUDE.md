@@ -73,14 +73,14 @@ duplicados, reglas de negocio en el servidor.
 
 **Hecho pero SIN commit (esperando que el usuario lo pruebe):**
 1. Requisitos de un solo lugar (`lib/requisitos.ts`) — tarea 3 de la ronda 1.
-2. **Evaluación requisito por requisito** con evidencia + puntaje por fórmula (`lib/puntaje.ts`), editor de requisitos con casilla «Excluyente» al crear puestos, vista de la evaluación en el panel. Puesto de prueba creado: «Analista de Datos Jr» (SQL y Excel excluyentes).
+2. **Evaluación requisito por requisito** con evidencia + puntaje por fórmula (`lib/puntaje.ts`), editor de requisitos con casilla «Excluyente» al crear puestos, vista de la evaluación en el panel. Puesto de prueba creado: «Analista de Datos Jr» (SQL y Excel excluyentes). Ajustes: el desglose del cálculo NO se muestra al reclutador (decisión del usuario; se queda el 70/30); temperatura 0 en las llamadas JSON (mismo CV → mismo resultado, verificado 2 corridas = 44); en tareas, la práctica académica/proyectos cuenta «parcial»; regla de coherencia requisito↔tarea.
 3. «Búsqueda finalizada» + mensajes por estado en Mi cuenta cuando la búsqueda se cerró.
 
 ## Próximos pasos (en orden)
 
 1. Que el usuario pruebe los 3 ítems de arriba → commit + push.
-2. Ronda 1, tarea 4: limpiar restos de credenciales (`.env.local.bak`; contraseñas viejas `admin123`/`reclutador123` en `GUIA_PRUEBA.md`; variables viejas `RECLUTADOR_*`/`ADMIN_*` en `.env.local`).
-3. Ronda 2: CVs en bucket **privado** con links temporales (signed URLs); backup automático diario (base + PDFs).
+2. ~~Ronda 1, tarea 4: limpiar credenciales~~ HECHO (sin commit): `.env.local.bak` a la Papelera, 6 variables viejas fuera de `.env.local`, `GUIA_PRUEBA.md` y `DOCUMENTACION.md` §9 actualizados a Supabase Auth. Falta: revisar si esas variables viejas siguen cargadas en Vercel y borrarlas.
+3. Ronda 2: CVs privados — CÓDIGO HECHO (sin commit): `GET /api/candidato/cv?id=` genera link firmado de 5 min (sólo equipo, registra evento `cv_abierto`); `subirCV` guarda la ruta. **Después del push**, correr en el SQL Editor la parte Storage de `supabase/schema.sql` (bucket `public=false` + borrar política `cvs_select_anon`). Luego: backup automático diario (base + PDFs).
 4. Ronda 3 (usuario): rotar claves de Gemini y Resend (quedaron en el chat); activar 2FA en Vercel.
 5. Ronda 4: dossier técnico (diagramas de arquitectura y de datos, los 10 puntos del checklist, ambientes DEV/QA/PROD, escalabilidad, costos para 100/1.000/100.000 usuarios) y documento de entrega del grupo.
 6. Si sobra tiempo: ambientes separados (otra base para DEV/QA), automatización con n8n, partir `app/dashboard/page.tsx` (~1.700 líneas).
