@@ -80,7 +80,7 @@ en Mi cuenta, limpieza de credenciales viejas y **CVs privados**: bucket `cvs` c
 
 ## Próximos pasos (en orden)
 
-1. Ronda 2: backup diario — HECHO: `scripts/backup.mjs` (tablas + cuentas + PDFs, tar.gz cifrado AES-256-GCM con `BACKUP_PASSPHRASE`), `scripts/abrir-backup.mjs`, `scripts/restaurar-backup.mjs` (simulación salvo `--confirmar`), workflow `.github/workflows/backup.yml` (06:00 UTC, artifact 30 días). Probado local (7 puestos, 12 candidatos, 221 eventos, 5 cuentas, 14 CVs). **Falta**: que el usuario cargue los secrets `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `BACKUP_PASSPHRASE` en GitHub y correr el workflow una vez. La clave también debe guardarla el usuario fuera de la compu (si se pierde, los backups no se abren).
+1. ~~Backup diario~~ HECHO y funcionando en GitHub Actions (primer run 2026-11-11 OK, descargado y abierto con la clave local). Scripts en `scripts/` (backup, abrir, restaurar con `--confirmar`); artifact cifrado, 30 días; secrets cargados por el usuario.
 2. Ambientes: al menos documentar DEV/QA/PROD (hoy local y Vercel comparten la base).
 3. Revisar en Vercel si quedaron las variables viejas `RECLUTADOR_*`/`ADMIN_*` y borrarlas.
 4. Ronda 3 (usuario): rotar claves de Gemini y Resend (quedaron en el chat); activar 2FA en Vercel.
