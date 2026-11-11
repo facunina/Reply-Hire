@@ -50,7 +50,7 @@ La versión vieja de Santiago (`obligatorio-ia.vercel.app`, repo `Tatonga-art/Ob
 ## Base de datos
 
 Tablas `puestos`, `candidatos`, `eventos` con **RLS activada sin políticas**: la clave pública
-no lee nada; la app usa la service key en el servidor. Bucket `cvs` (hoy **público**).
+no lee nada; la app usa la service key en el servidor. Bucket `cvs` **privado** (links firmados de 5 min).
 Índice único `candidatos (usuario_id, puesto_id)`.
 Cuentas del equipo: `reclutador@replyhire.test` y `admin@replyhire.test` (el usuario tiene las contraseñas).
 
@@ -71,19 +71,21 @@ Supabase Auth, preguntas de entrevista con IA, Google Calendar, postulación ins
 segundo plano), cerrar/reabrir búsquedas, base asegurada (RLS + service key), UNIQUE contra
 duplicados, reglas de negocio en el servidor.
 
-**Hecho pero SIN commit (esperando que el usuario lo pruebe):**
-1. Requisitos de un solo lugar (`lib/requisitos.ts`) — tarea 3 de la ronda 1.
-2. **Evaluación requisito por requisito** con evidencia + puntaje por fórmula (`lib/puntaje.ts`), editor de requisitos con casilla «Excluyente» al crear puestos, vista de la evaluación en el panel. Puesto de prueba creado: «Analista de Datos Jr» (SQL y Excel excluyentes). Ajustes: el desglose del cálculo NO se muestra al reclutador (decisión del usuario; se queda el 70/30); temperatura 0 en las llamadas JSON (mismo CV → mismo resultado, verificado 2 corridas = 44); en tareas, la práctica académica/proyectos cuenta «parcial»; regla de coherencia requisito↔tarea.
-3. «Búsqueda finalizada» + mensajes por estado en Mi cuenta cuando la búsqueda se cerró.
+También subido (commit 8156c25): evaluación requisito por requisito con fórmula de puntaje
+(`lib/puntaje.ts`, 70/30 — el desglose NO se muestra al reclutador; temperatura 0; práctica
+académica = «parcial» en tareas), editor de requisitos con «Excluyente», «Búsqueda finalizada»
+en Mi cuenta, limpieza de credenciales viejas y **CVs privados**: bucket `cvs` con
+`public=false` (aplicado en Supabase 2026-11-10) y links firmados de 5 min vía
+`GET /api/candidato/cv` (sólo equipo, evento `cv_abierto`).
 
 ## Próximos pasos (en orden)
 
-1. Que el usuario pruebe los 3 ítems de arriba → commit + push.
-2. ~~Ronda 1, tarea 4: limpiar credenciales~~ HECHO (sin commit): `.env.local.bak` a la Papelera, 6 variables viejas fuera de `.env.local`, `GUIA_PRUEBA.md` y `DOCUMENTACION.md` §9 actualizados a Supabase Auth. Falta: revisar si esas variables viejas siguen cargadas en Vercel y borrarlas.
-3. Ronda 2: CVs privados — CÓDIGO HECHO (sin commit): `GET /api/candidato/cv?id=` genera link firmado de 5 min (sólo equipo, registra evento `cv_abierto`); `subirCV` guarda la ruta. **Después del push**, correr en el SQL Editor la parte Storage de `supabase/schema.sql` (bucket `public=false` + borrar política `cvs_select_anon`). Luego: backup automático diario (base + PDFs).
+1. Ronda 2: **backup automático diario** (base + PDFs).
+2. Ambientes: al menos documentar DEV/QA/PROD (hoy local y Vercel comparten la base).
+3. Revisar en Vercel si quedaron las variables viejas `RECLUTADOR_*`/`ADMIN_*` y borrarlas.
 4. Ronda 3 (usuario): rotar claves de Gemini y Resend (quedaron en el chat); activar 2FA en Vercel.
 5. Ronda 4: dossier técnico (diagramas de arquitectura y de datos, los 10 puntos del checklist, ambientes DEV/QA/PROD, escalabilidad, costos para 100/1.000/100.000 usuarios) y documento de entrega del grupo.
 6. Si sobra tiempo: ambientes separados (otra base para DEV/QA), automatización con n8n, partir `app/dashboard/page.tsx` (~1.700 líneas).
 
 Riesgos conocidos: Gemini gratis se satura (análisis de 20–30 s) y en plan gratis Google puede
-usar los datos de los CVs; bucket de CVs público; DEV usa la misma base que PROD.
+usar los datos de los CVs; DEV usa la misma base que PROD.
