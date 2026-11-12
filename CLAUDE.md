@@ -81,11 +81,11 @@ en Mi cuenta, limpieza de credenciales viejas y **CVs privados**: bucket `cvs` c
 ## Próximos pasos (en orden)
 
 1. ~~Backup diario~~ HECHO y funcionando en GitHub Actions (primer run 2026-11-11 OK, descargado y abierto con la clave local). Scripts en `scripts/` (backup, abrir, restaurar con `--confirmar`); artifact cifrado, 30 días; secrets cargados por el usuario.
-2. Ambientes: al menos documentar DEV/QA/PROD (hoy local y Vercel comparten la base).
+2. Ambientes: DECISIÓN del usuario (2026-11-11): NO crear una base aparte; se mantiene una sola base y se **documenta** en el dossier (DEV = local, PROD = Vercel, QA = local antes del push; cómo se separaría al crecer: segundo proyecto Supabase + preview deployments de Vercel).
 3. Revisar en Vercel si quedaron las variables viejas `RECLUTADOR_*`/`ADMIN_*` y borrarlas.
 4. Ronda 3 (usuario): rotar claves de Gemini y Resend (quedaron en el chat); activar 2FA en Vercel.
 5. Ronda 4: dossier técnico (diagramas de arquitectura y de datos, los 10 puntos del checklist, ambientes DEV/QA/PROD, escalabilidad, costos para 100/1.000/100.000 usuarios) y documento de entrega del grupo.
-6. Si sobra tiempo: ambientes separados (otra base para DEV/QA), automatización con n8n, partir `app/dashboard/page.tsx` (~1.700 líneas).
+6. Si sobra tiempo: automatización con n8n, partir `app/dashboard/page.tsx` (~1.700 líneas).
 
 Riesgos conocidos: Gemini gratis se satura (análisis de 20–30 s) y en plan gratis Google puede
 usar los datos de los CVs; DEV usa la misma base que PROD.
