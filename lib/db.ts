@@ -41,7 +41,7 @@ export interface Candidato {
   usuario_id?: string | null;   // cuenta (Supabase Auth) del candidato que se postuló
   posible_inyeccion?: boolean;
   mensaje?: string;             // texto libre que el candidato le deja al reclutador
-  preguntas_entrevista?: string; // JSON con las preguntas sugeridas por la IA
+  preguntas_entrevista?: unknown[] | null; // lista (jsonb) de preguntas sugeridas por la IA
   analisis?: string;            // procesando | listo | sin_datos | error (ver lib/analisis.ts)
   evaluacion?: any;             // evaluación requisito por requisito (ver lib/analisis.ts y lib/puntaje.ts)
   entrevista_inicio?: string | null;   // fecha y hora de la entrevista agendada
@@ -105,13 +105,9 @@ const COLUMNAS = [
 
 // ─── Helpers de serialización ────────────────────────────────────────────────
 
-/** Convierte arrays a texto " | " para almacenar de forma consistente. */
-function serializar(v: any): string {
-  if (Array.isArray(v)) return v.map(String).join(' | ');
-  if (v === null || v === undefined) return '';
-  return String(v);
-}
-
+// fortalezas, brechas y preguntas_entrevista son columnas jsonb con LISTAS
+// (un valor por elemento). parseArr también entiende el formato viejo
+// ("a | b" o JSON en texto) por si queda algún dato anterior a la migración.
 function parseArr(v: any): string[] {
   if (Array.isArray(v)) return v.map(String);
   if (typeof v === 'string' && v.trim()) {
@@ -125,6 +121,18 @@ function parseArr(v: any): string[] {
   return [];
 }
 
+/** Preguntas de entrevista como lista (acepta también el JSON en texto viejo). */
+function listaDePreguntas(v: any): unknown[] | null {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string' && v.trim()) {
+    try {
+      const p = JSON.parse(v);
+      return Array.isArray(p) ? p : null;
+    } catch { /* ignorar */ }
+  }
+  return null;
+}
+
 /** Normaliza una fila cruda de Supabase al shape que consume el dashboard. */
 function deserializar(f: any): Candidato {
   if (!f) return f;
@@ -134,8 +142,7 @@ function deserializar(f: any): Candidato {
     resumen: f.resumen ?? '',
     fortalezas: parseArr(f.fortalezas),
     brechas: parseArr(f.brechas),
-    skills: parseArr(f.skills),
-    idiomas: parseArr(f.idiomas),
+    preguntas_entrevista: listaDePreguntas(f.preguntas_entrevista),
   };
 }
 
@@ -154,7 +161,7 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
   if (c.usuario_id !== undefined) fila.usuario_id = c.usuario_id || null;
   if (c.posible_inyeccion !== undefined) fila.posible_inyeccion = !!c.posible_inyeccion;
   if (c.mensaje !== undefined) fila.mensaje = c.mensaje || '';
-  if (c.preguntas_entrevista !== undefined) fila.preguntas_entrevista = c.preguntas_entrevista || '';
+  if (c.preguntas_entrevista !== undefined) fila.preguntas_entrevista = listaDePreguntas(c.preguntas_entrevista);
   if (c.analisis !== undefined) fila.analisis = c.analisis || 'listo';
   if (c.evaluacion !== undefined) fila.evaluacion = c.evaluacion ?? null;
   if (c.entrevista_inicio !== undefined) fila.entrevista_inicio = c.entrevista_inicio || null;
@@ -167,8 +174,8 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
     const n = Number(c.score);
     fila.score = isNaN(n) ? 0 : n;
   }
-  if (c.fortalezas !== undefined) fila.fortalezas = serializar(c.fortalezas);
-  if (c.brechas !== undefined) fila.brechas = serializar(c.brechas);
+  if (c.fortalezas !== undefined) fila.fortalezas = parseArr(c.fortalezas);
+  if (c.brechas !== undefined) fila.brechas = parseArr(c.brechas);
   if (c.feedback !== undefined) fila.feedback = c.feedback || '';
   if (c.estado !== undefined) fila.estado = c.estado || '';
   if (c.guardado !== undefined) fila.guardado = !!c.guardado;
@@ -357,14 +364,30 @@ export interface Puesto {
   sobre_nosotros?: string;   // 2. Sobre nosotros (propuesta de cultura)
   mision?: string;           // 3. Misión del puesto (el "para qué")
   actividades?: string;      // 4. Responsabilidades y tareas (¿qué hará?)
-  requisitos?: string;       // 5. Requisitos del perfil (¿qué buscamos?)
   requisitos_lista?: { texto: string; excluyente: boolean }[]; // requisitos uno por uno (con marca de excluyente)
   modalidad?: string;        // 6. Modalidad y ubicación
   beneficios?: string;       // 7. Beneficios y propuesta de valor (¿qué ofrecemos?)
-  salario?: string;          // (legacy, opcional)
   created_at?: string;       // la tabla `puestos` usa created_at (en inglés)
   activo?: boolean;          // false = búsqueda cerrada: no recibe postulaciones
   cerrado_a?: string | null; // cuándo se cerró
+  creado_por?: string | null; // cuenta del reclutador que la creó (auth.users.id)
+  creado_por_email?: string;  // NO es columna: se resuelve desde auth.users para el panel
+}
+
+/**
+ * Email de cada cuenta, buscado en Supabase Auth a partir de su id. El email
+ * NO se copia en `puestos`: se guarda sólo la relación (creado_por) y el dato
+ * se lee de su único lugar, la cuenta.
+ */
+export async function emailsDeCuentas(ids: string[]): Promise<Record<string, string>> {
+  const unicos = [...new Set(ids.filter(Boolean))];
+  const pares = await Promise.all(
+    unicos.map(async (id) => {
+      const { data } = await getSupabase().auth.admin.getUserById(id);
+      return [id, data?.user?.email || ''] as const;
+    })
+  );
+  return Object.fromEntries(pares);
 }
 
 /** Inserta un puesto nuevo y devuelve la fila persistida.
@@ -379,19 +402,18 @@ export async function guardarPuesto(p: Puesto): Promise<Puesto> {
     sobre_nosotros: p.sobre_nosotros || '',
     mision: p.mision || '',
     actividades: p.actividades || '',
-    requisitos: p.requisitos || '',
     requisitos_lista: Array.isArray(p.requisitos_lista) ? p.requisitos_lista : [],
     modalidad: p.modalidad || '',
     beneficios: p.beneficios || '',
-    salario: p.salario || '',
   };
+  if (p.creado_por) fila.creado_por = p.creado_por;
   // Respetamos el id si el caller ya generó uno (uuid); si no, lo genera Supabase.
   if (p.id) fila.id = p.id;
 
   // Columnas opcionales que pueden no existir si falta la migración. El id,
-  // nombre, actividades, requisitos y salario son del esquema original y no se
+  // nombre y actividades son del esquema original y no se
   // descartan: si fallan, es un error real.
-  const descartables = new Set(['area', 'requisitos_lista', 'sobre_nosotros', 'mision', 'modalidad', 'beneficios']);
+  const descartables = new Set(['area', 'requisitos_lista', 'creado_por', 'sobre_nosotros', 'mision', 'modalidad', 'beneficios']);
 
   for (let intento = 0; intento < 6; intento++) {
     const { data, error } = await getSupabase()

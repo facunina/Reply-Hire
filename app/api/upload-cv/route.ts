@@ -135,7 +135,7 @@ export async function POST(request: Request) {
       console.warn("No se pudo subir el PDF a Storage:", storageError.message);
     }
 
-    // Armar objeto candidato — arrays pre-serializados con " | " para la BD
+    // Armar objeto candidato (fortalezas y brechas las completa la IA después)
     const candidato = {
       id,
       nombre: nombre || "Sin nombre",

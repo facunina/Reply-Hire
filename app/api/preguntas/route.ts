@@ -78,7 +78,7 @@ export async function POST(request: Request) {
   // columna (falta correr la migración), se devuelven igual sin guardar.
   let guardadas = true;
   try {
-    await actualizarCandidato(id, { preguntas_entrevista: JSON.stringify(preguntas) });
+    await actualizarCandidato(id, { preguntas_entrevista: preguntas });
   } catch (e: any) {
     guardadas = false;
     console.warn('No se pudieron guardar las preguntas de entrevista:', e.message);

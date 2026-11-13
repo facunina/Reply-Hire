@@ -22,17 +22,23 @@ export function partirEnItems(texto: string | undefined | null): string[] {
     .slice(0, MAX_ITEMS);
 }
 
-/** Requisitos del puesto. Si el reclutador los cargó como lista, se usan esos
- *  (con su marca de excluyente); si no, se parte el texto libre (ninguno
- *  excluyente), así funciona también con los puestos viejos. */
-export function listaRequisitos(puesto: Pick<Puesto, 'requisitos' | 'requisitos_lista'>): RequisitoPuesto[] {
+/** Requisitos del puesto. Se guardan en UN solo lugar: `requisitos_lista`
+ *  (cada uno con su marca de excluyente). No hay copia en texto. */
+export function listaRequisitos(puesto: Pick<Puesto, 'requisitos_lista'>): RequisitoPuesto[] {
   const lista = Array.isArray(puesto.requisitos_lista) ? puesto.requisitos_lista : [];
   const limpios = lista
     .filter((r) => r && typeof r.texto === 'string' && r.texto.trim())
     .map((r) => ({ texto: r.texto.trim(), excluyente: !!r.excluyente }))
     .slice(0, MAX_ITEMS);
-  if (limpios.length > 0) return limpios;
-  return partirEnItems(puesto.requisitos).map((texto) => ({ texto, excluyente: false }));
+  return limpios;
+}
+
+/** Requisitos en texto, uno por línea (para mostrarlos en el portal). Se arma
+ *  al vuelo desde la lista: no se guarda. */
+export function textoRequisitos(puesto: Pick<Puesto, 'requisitos_lista'>): string {
+  return listaRequisitos(puesto)
+    .map((r) => '• ' + r.texto + (r.excluyente ? ' (excluyente)' : ''))
+    .join('\n');
 }
 
 /** Tareas / responsabilidades del puesto, una por ítem. */

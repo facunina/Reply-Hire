@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { textoRequisitos } from '@/lib/requisitos';
 import { notFound } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
@@ -61,7 +62,7 @@ export default async function PuestoPage({ params }: { params: Promise<{ id: str
             <Bloque titulo="Sobre nosotros" texto={puesto.sobre_nosotros} />
             <Bloque titulo="Misión del puesto" texto={puesto.mision} />
             <Bloque titulo="Qué vas a hacer" texto={puesto.actividades} />
-            <Bloque titulo="Qué buscamos" texto={puesto.requisitos} />
+            <Bloque titulo="Qué buscamos" texto={textoRequisitos(puesto)} />
             <Bloque titulo="Qué ofrecemos" texto={puesto.beneficios} />
           </article>
 

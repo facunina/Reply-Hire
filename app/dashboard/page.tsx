@@ -22,7 +22,7 @@ interface Candidato {
   feedback: string;
   posible_inyeccion?: boolean;
   mensaje?: string;
-  preguntas_entrevista?: string;
+  preguntas_entrevista?: PreguntaEntrevista[] | null;
   evaluacion?: Evaluacion | null;
   analisis?: string; // procesando | listo | sin_datos | error
   entrevista_inicio?: string | null;
@@ -89,27 +89,21 @@ interface PreguntaEntrevista {
 }
 
 /** Lee las preguntas guardadas en el candidato (texto JSON) sin romper si viene vacío o mal formado. */
-function leerPreguntas(texto?: string): PreguntaEntrevista[] {
-  if (!texto) return [];
-  try {
-    const v = JSON.parse(texto);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
+function leerPreguntas(v?: PreguntaEntrevista[] | null): PreguntaEntrevista[] {
+  return Array.isArray(v) ? v : [];
 }
 
 interface Puesto {
   id: string;
   nombre: string;
   activo?: boolean;
+  created_at?: string;
+  creado_por_email?: string;
   sobre_nosotros?: string;
   mision?: string;
   actividades?: string;
-  requisitos?: string;
   modalidad?: string;
   beneficios?: string;
-  salario?: string;
 }
 
 // Formulario de creación de puesto en blanco (las 7 secciones de la búsqueda).
@@ -119,7 +113,6 @@ const PUESTO_VACIO = {
   sobre_nosotros: "",
   mision: "",
   actividades: "",
-  requisitos: "",
   // Requisitos uno por uno; los excluyentes ponen tope al puntaje (lib/puntaje.ts).
   requisitos_lista: [{ texto: "", excluyente: false }] as { texto: string; excluyente: boolean }[],
   modalidad: "",
@@ -593,6 +586,17 @@ export default function DashboardPage() {
   const puestosTabs = vista === "cerradas" ? puestosCerrados : puestosAbiertos;
   const puestoActual = puestos.find((p) => p.id === puestoActivo);
 
+  // El nombre puede repetirse (dos reclutadores buscando el mismo rol): en ese
+  // caso la pestaña muestra también quién creó cada búsqueda para distinguirlas.
+  const nombreRepetido = (p: Puesto) =>
+    puestosTabs.some((q) => q.id !== p.id && q.nombre.trim().toLowerCase() === p.nombre.trim().toLowerCase());
+  const quienCreo = (p: Puesto) => {
+    const fecha = p.created_at ? new Date(p.created_at).toLocaleDateString("es-UY") : "";
+    const autor = p.creado_por_email || "";
+    if (!autor && !fecha) return "";
+    return `Creada${autor ? " por " + autor : ""}${fecha ? " el " + fecha : ""} · `;
+  };
+
   // Una postulación pertenece a un puesto por su id; las muy viejas (sin
   // puesto_id) se asocian por nombre.
   const esDelPuesto = (c: Candidato, p: Puesto) => (c.puesto_id ? c.puesto_id === p.id : c.puesto === p.nombre);
@@ -719,6 +723,9 @@ export default function DashboardPage() {
                   }`}
                 >
                   {p.nombre}
+                  {nombreRepetido(p) && p.creado_por_email && (
+                    <span className="text-xs font-normal text-slate-400">· {p.creado_por_email.split("@")[0]}</span>
+                  )}
                   <span
                     className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                       activo ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
@@ -755,6 +762,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
+                {quienCreo(puestoActual)}
                 {contarPorPuesto(puestoActual)} postulación{contarPorPuesto(puestoActual) === 1 ? "" : "es"}
                 {puestoActual.activo === false
                   ? " · No se ve en el portal. Los candidatos y CVs quedan guardados acá."

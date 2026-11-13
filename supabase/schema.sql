@@ -28,6 +28,10 @@ alter table public.puestos add column if not exists activo boolean not null defa
 alter table public.puestos add column if not exists cerrado_a timestamptz;
 -- Requisitos uno por uno: [{ "texto": "...", "excluyente": true|false }]
 alter table public.puestos add column if not exists requisitos_lista jsonb not null default '[]'::jsonb;
+-- Quién creó la búsqueda (cuenta del reclutador). El NOMBRE de una búsqueda puede
+-- repetirse a propósito: la identidad es el id y se distinguen por su creador.
+alter table public.puestos add column if not exists creado_por uuid references auth.users(id) on delete set null;
+create index if not exists puestos_creado_por_idx on public.puestos (creado_por);
 
 -- ─── Tabla candidatos ────────────────────────────────────────────────────────
 -- Estados: pendiente → en_entrevista → seleccionado | rechazado_cv | rechazado_entrevista
@@ -41,7 +45,7 @@ create table if not exists public.candidatos (
   usuario_id        uuid references auth.users(id) on delete set null,  -- cuenta del candidato (Supabase Auth)
   posible_inyeccion boolean not null default false,
   mensaje           text default '',   -- texto libre del candidato para el reclutador
-  preguntas_entrevista text default '',  -- JSON con las preguntas sugeridas por la IA
+  preguntas_entrevista jsonb,            -- lista de preguntas sugeridas por la IA
   analisis             text not null default 'listo',  -- procesando | listo | sin_datos | error
   entrevista_inicio    timestamptz,       -- entrevista agendada en Google Calendar
   entrevista_evento_id text default '',
@@ -50,8 +54,8 @@ create table if not exists public.candidatos (
   cv_texto          text default '',
   cv_url            text default '',
   score             numeric default 0,
-  fortalezas        text default '',   -- items separados por " | "
-  brechas           text default '',   -- items separados por " | "
+  fortalezas        jsonb default '[]'::jsonb,  -- lista de textos (un valor por elemento)
+  brechas           jsonb default '[]'::jsonb,  -- lista de textos
   resumen           text default '',
   feedback          text default '',
   estado            text not null default 'pendiente',
@@ -62,7 +66,7 @@ create table if not exists public.candidatos (
 -- Bases creadas antes de que existiera la columna `usuario_id`.
 alter table public.candidatos add column if not exists usuario_id uuid references auth.users(id) on delete set null;
 alter table public.candidatos add column if not exists mensaje text default '';
-alter table public.candidatos add column if not exists preguntas_entrevista text default '';
+alter table public.candidatos add column if not exists preguntas_entrevista jsonb;
 alter table public.candidatos add column if not exists analisis text not null default 'listo';
 alter table public.candidatos add column if not exists entrevista_inicio timestamptz;
 alter table public.candidatos add column if not exists entrevista_evento_id text default '';
