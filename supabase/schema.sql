@@ -15,10 +15,8 @@ create table if not exists public.puestos (
   sobre_nosotros text default '',
   mision         text default '',
   actividades    text default '',
-  requisitos     text default '',
   modalidad      text default '',
   beneficios     text default '',
-  salario        text default '',
   created_at     timestamptz not null default now()
 );
 
@@ -26,6 +24,8 @@ create table if not exists public.puestos (
 alter table public.puestos add column if not exists area text not null default 'Otros';
 alter table public.puestos add column if not exists activo boolean not null default true;
 alter table public.puestos add column if not exists cerrado_a timestamptz;
+-- Columnas viejas eliminadas (los requisitos viven sólo en requisitos_lista).
+alter table public.puestos drop column if exists requisitos, drop column if exists salario;
 -- Requisitos uno por uno: [{ "texto": "...", "excluyente": true|false }]
 alter table public.puestos add column if not exists requisitos_lista jsonb not null default '[]'::jsonb;
 -- Quién creó la búsqueda (cuenta del reclutador). El NOMBRE de una búsqueda puede
@@ -115,14 +115,14 @@ drop policy if exists "cvs_insert_anon" on storage.objects;
 drop policy if exists "cvs_update_anon" on storage.objects;
 
 -- ─── Puesto de ejemplo (opcional, para poder postular apenas se levanta) ────
-insert into public.puestos (nombre, area, sobre_nosotros, mision, actividades, requisitos, modalidad, beneficios)
+insert into public.puestos (nombre, area, sobre_nosotros, mision, actividades, requisitos_lista, modalidad, beneficios)
 select
   'Desarrollador/a Full Stack Jr',
   'Tecnología',
   'Somos una startup uruguaya de tecnología para RRHH.',
   'Construir y mantener las funcionalidades de nuestra plataforma web.',
   'Desarrollar features en Next.js/React; crear APIs; escribir tests; participar en code reviews.',
-  '1+ año con JavaScript/TypeScript; React; nociones de SQL; Git; inglés intermedio.',
+  '[{"texto":"1+ año con JavaScript/TypeScript","excluyente":true},{"texto":"React","excluyente":false},{"texto":"Nociones de SQL","excluyente":false},{"texto":"Git","excluyente":false},{"texto":"Inglés intermedio","excluyente":false}]'::jsonb,
   'Híbrido — Montevideo',
   'Capacitación, horario flexible, cobertura médica.'
 where not exists (select 1 from public.puestos);

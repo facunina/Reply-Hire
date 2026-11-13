@@ -78,8 +78,16 @@ en Mi cuenta, limpieza de credenciales viejas y **CVs privados**: bucket `cvs` c
 `public=false` (aplicado en Supabase 2026-11-10) y links firmados de 5 min vía
 `GET /api/candidato/cv` (sólo equipo, evento `cv_abierto`).
 
+Modelo de datos revisado (punto 1, 2026-11-12, commit 9c15ad0): nombre de búsqueda repetible
+(identidad = id) + `puestos.creado_por` → auth.users (el panel muestra «Creada por…»);
+requisitos SÓLO en `requisitos_lista` (columnas `requisitos` y `salario` eliminadas);
+`fortalezas`, `brechas`, `preguntas_entrevista` ahora jsonb (listas). Redundancias que se
+JUSTIFICAN en el dossier: «foto» de nombre/email/teléfono/puesto en candidatos, `score` guardado
+(ordenar/métricas), `activo` + `cerrado_a` (historial).
+
 ## Próximos pasos (en orden)
 
+0. Checklist punto por punto (en curso): 1 ✅ → **sigue el 7** (estados del panel desde `lib/estados.ts`, no repetir lógica) → 6 (usuario) → 8/9/10 (documento).
 1. ~~Backup diario~~ HECHO y funcionando en GitHub Actions (primer run 2026-11-11 OK, descargado y abierto con la clave local). Scripts en `scripts/` (backup, abrir, restaurar con `--confirmar`); artifact cifrado, 30 días; secrets cargados por el usuario.
 2. Ambientes: DECISIÓN del usuario (2026-11-11): NO crear una base aparte; se mantiene una sola base y se **documenta** en el dossier (DEV = local, PROD = Vercel, QA = local antes del push; cómo se separaría al crecer: segundo proyecto Supabase + preview deployments de Vercel).
 3. Revisar en Vercel si quedaron las variables viejas `RECLUTADOR_*`/`ADMIN_*` y borrarlas.
