@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { nivelPuntaje } from "@/lib/puntaje";
 
 // ─── Tipos de la respuesta de /api/admin/metricas ────────────────────────────
 interface Conexion {
@@ -708,7 +709,7 @@ export default function AdminPage() {
                         {ent.map(([p, s]) => (
                           <div key={p} className="flex justify-between">
                             <span className="text-slate-600 truncate pr-2">{p}</span>
-                            <span className={`font-bold ${s >= 70 ? "text-green-600" : s >= 40 ? "text-yellow-600" : "text-red-600"}`}>{s}%</span>
+                            <span className={`font-bold ${{ alto: "text-green-600", medio: "text-yellow-600", bajo: "text-red-600" }[nivelPuntaje(s)]}`}>{s}%</span>
                           </div>
                         ))}
                       </div>

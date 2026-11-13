@@ -3,6 +3,13 @@
 import { useState, useEffect } from "react";
 import { AREAS, AREA_POR_DEFECTO } from "@/lib/areas";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+// Reglas de negocio: se definen una sola vez y las cumplen el panel y las APIs.
+import {
+  puedeDecidir, enRevisionDeCV, enEtapaEntrevista, esEstadoFinal, rechazoSegunEtapa,
+  cierraLaBusqueda, MAX_REQUISITOS,
+} from "@/lib/reglas";
+import { estadoParaEquipo } from "@/lib/estados";
+import { nivelPuntaje, type Nivel } from "@/lib/puntaje";
 
 interface Candidato {
   id: string;
@@ -500,7 +507,7 @@ export default function DashboardPage() {
     // Al seleccionar a alguien, la búsqueda se cierra: ya se cubrió el puesto.
     const puestoDelCandidato = puestos.find((p) => esDelPuesto(seleccionado, p));
     if (
-      nuevoEstado === "seleccionado" &&
+      cierraLaBusqueda(nuevoEstado) &&
       !window.confirm(
         `Vas a seleccionar a ${seleccionado.nombre}.` +
           (puestoDelCandidato && puestoDelCandidato.activo !== false
@@ -543,41 +550,15 @@ export default function DashboardPage() {
     }
   };
 
-  const colorBarra = (score: number) => {
-    if (score >= 70) return "bg-green-500";
-    if (score >= 40) return "bg-yellow-500";
-    return "bg-red-500";
-  };
+  // Colores según el nivel del puntaje (los umbrales están en lib/puntaje.ts).
+  const COLOR_BARRA: Record<Nivel, string> = { alto: "bg-green-500", medio: "bg-yellow-500", bajo: "bg-red-500" };
+  const COLOR_TEXTO: Record<Nivel, string> = { alto: "text-green-600", medio: "text-yellow-600", bajo: "text-red-600" };
+  const colorBarra = (score: number) => COLOR_BARRA[nivelPuntaje(score)];
+  const colorTexto = (score: number) => COLOR_TEXTO[nivelPuntaje(score)];
 
-  const colorTexto = (score: number) => {
-    if (score >= 70) return "text-green-600";
-    if (score >= 40) return "text-yellow-600";
-    return "text-red-600";
-  };
-
-  const etiquetaEstado = (estado: string) => {
-    switch (estado) {
-      case "pendiente": return "Pendiente de revisión";
-      case "en_entrevista": return "En entrevista";
-      case "seleccionado": return "Seleccionado";
-      case "rechazado_cv": return "Rechazado (CV)";
-      case "rechazado_entrevista": return "Rechazado (entrevista)";
-      default: return estado;
-    }
-  };
-
-  const colorBadge = (estado: string) => {
-    switch (estado) {
-      case "pendiente": return "bg-amber-50 text-amber-700 border-amber-200";
-      case "en_entrevista": return "bg-blue-50 text-blue-700 border-blue-200";
-      case "seleccionado": return "bg-emerald-50 text-emerald-700 border-emerald-200";
-      case "rechazado_cv":
-      case "rechazado_entrevista":
-        return "bg-rose-50 text-rose-700 border-rose-200";
-      default:
-        return "bg-slate-50 text-slate-700 border-slate-200";
-    }
-  };
+  // Nombre y color de cada estado: lib/estados.ts.
+  const etiquetaEstado = (estado: string) => estadoParaEquipo(estado).texto;
+  const colorBadge = (estado: string) => estadoParaEquipo(estado).clase;
 
   // Pestañas: sólo las búsquedas vigentes de la tabla `puestos` (las mismas a
   // las que un candidato se puede postular hoy desde el portal).
@@ -1080,7 +1061,7 @@ export default function DashboardPage() {
               )}
 
               {/* Postulaciones analizadas antes de la evaluación por requisito */}
-              {analisisDe(seleccionado) === "listo" && !seleccionado.evaluacion && seleccionado.estado === "pendiente" && (
+              {analisisDe(seleccionado) === "listo" && !seleccionado.evaluacion && enRevisionDeCV(seleccionado.estado) && (
                 <div className="border border-dashed border-slate-300 rounded-xl p-4 text-center">
                   <p className="text-sm text-slate-600">
                     Esta postulación se evaluó con el método anterior (global).
@@ -1179,7 +1160,7 @@ export default function DashboardPage() {
               {/* Preguntas para la entrevista (IA) — desde que el candidato avanza a entrevista */}
               {(() => {
                 const lista = preguntas[seleccionado.id] || leerPreguntas(seleccionado.preguntas_entrevista);
-                const enEntrevista = seleccionado.estado === "en_entrevista";
+                const enEntrevista = enEtapaEntrevista(seleccionado.estado);
                 if (!enEntrevista && lista.length === 0) return null;
                 return (
                   <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
@@ -1220,13 +1201,13 @@ export default function DashboardPage() {
 
               {/* ACTIONS SECTION */}
               <div className="space-y-3">
-                {seleccionado.estado === "pendiente" && analisisDe(seleccionado) === "procesando" && (
+                {!esEstadoFinal(seleccionado.estado) && analisisDe(seleccionado) === "procesando" && (
                   <p className="text-sm text-slate-500 text-center">
                     Podés decidir cuando termine el análisis con IA.
                   </p>
                 )}
 
-                {seleccionado.estado === "pendiente" && analisisDe(seleccionado) !== "procesando" && (
+                {enRevisionDeCV(seleccionado.estado) && puedeDecidir(seleccionado, "en_entrevista") && (
                   <div>
                     <h4 className="text-sm font-bold text-slate-700 mb-3">Fase 1 — Revisión de CV</h4>
                     <div className="flex flex-col sm:flex-row gap-3">
@@ -1248,7 +1229,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {seleccionado.estado === "en_entrevista" && (
+                {enEtapaEntrevista(seleccionado.estado) && (
                   <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                     <h4 className="text-sm font-bold text-slate-700">Agendar entrevista (Google Calendar)</h4>
                     {seleccionado.entrevista_inicio && (
@@ -1342,7 +1323,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {seleccionado.estado === "en_entrevista" && (
+                {enEtapaEntrevista(seleccionado.estado) && puedeDecidir(seleccionado, "seleccionado") && (
                   <div>
                     <h4 className="text-sm font-bold text-slate-700 mb-3">Fase 2 — Post-entrevista</h4>
                     <div className="flex flex-col sm:flex-row gap-3">
@@ -1364,9 +1345,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {(seleccionado.estado === "seleccionado" ||
-                  seleccionado.estado === "rechazado_cv" ||
-                  seleccionado.estado === "rechazado_entrevista") && (
+                {esEstadoFinal(seleccionado.estado) && (
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center">
                     <p className="text-sm font-semibold text-slate-600">
                       Este proceso ya fue cerrado:{" "}
@@ -1403,7 +1382,7 @@ export default function DashboardPage() {
                   <button
                     onClick={() =>
                       enviarFeedback(
-                        seleccionado.estado === "pendiente" ? "rechazado_cv" : "rechazado_entrevista"
+                        rechazoSegunEtapa(seleccionado.estado)
                       )
                     }
                     disabled={enviando || !feedback.trim()}
@@ -1583,7 +1562,7 @@ export default function DashboardPage() {
                     </div>
                   ))}
                 </div>
-                {nuevoPuesto.requisitos_lista.length < 12 && (
+                {nuevoPuesto.requisitos_lista.length < MAX_REQUISITOS && (
                   <button
                     type="button"
                     onClick={() =>

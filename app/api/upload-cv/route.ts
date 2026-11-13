@@ -8,11 +8,10 @@ import { usuarioDesdeRequest } from '@/lib/auth-candidato';
 import { PROMPT_CONFIRMACION, detectarInyeccion } from '@/lib/prompts';
 import { registrarEvento } from '@/lib/eventos';
 import { randomUUID } from 'crypto';
+import { CV_MAX_MB, MENSAJE_MAX } from '@/lib/reglas';
 
 const pdfParse = require('pdf-parse/lib/pdf-parse')
 
-// Largo máximo del mensaje que el candidato le deja al reclutador.
-const MENSAJE_MAX = 1000;
 
 export async function POST(request: Request) {
   try {
@@ -47,8 +46,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El archivo debe ser un PDF." }, { status: 400 });
     }
 
-    if (cv.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: "El archivo supera el tamaño máximo de 10MB." }, { status: 400 });
+    if (cv.size > CV_MAX_MB * 1024 * 1024) {
+      return NextResponse.json({ error: `El archivo supera el tamaño máximo de ${CV_MAX_MB}MB.` }, { status: 400 });
     }
 
     // Una misma cuenta no puede postularse dos veces a la misma búsqueda. Se

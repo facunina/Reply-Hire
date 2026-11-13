@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+// Los mismos topes que aplica el servidor (definidos una sola vez).
+import { CV_MAX_MB, MENSAJE_MAX } from "@/lib/reglas";
 import { normalizarArea } from "@/lib/areas";
 
 interface Puesto {
@@ -19,8 +21,6 @@ interface Cuenta {
   telefono: string;
 }
 
-// Largo máximo del mensaje al reclutador (el servidor aplica el mismo tope).
-const MENSAJE_MAX = 1000;
 
 // Estados de carga de la página:
 //  - "cargando": todavía se está validando la sesión y buscando el puesto.
@@ -260,7 +260,7 @@ export default function PostularPage() {
                             <input id="file-upload" name="file-upload" type="file" accept=".pdf" className="sr-only" onChange={handleFileChange} />
                           </label>
                         </div>
-                        <p className="text-xs text-slate-500">PDF de hasta 10MB</p>
+                        <p className="text-xs text-slate-500">PDF de hasta {CV_MAX_MB}MB</p>
                         {archivo && (
                           <p className="mt-2 text-sm font-medium text-brand-700 bg-brand-50 py-1 px-2 rounded inline-block">
                             📄 {archivo.name} ({(archivo.size / 1024 / 1024).toFixed(2)} MB)

@@ -28,6 +28,20 @@ export interface Puntaje {
 }
 
 const VALOR: Record<Cumple, number> = { si: 1, parcial: 0.5, no: 0 };
+
+// Niveles del puntaje (los usan el panel y las métricas para los colores).
+// Los topes por excluyentes quedan justo debajo de cada nivel: si falta un
+// excluyente el candidato nunca llega a "medio"; si es parcial, nunca a "alto".
+export const NIVEL_ALTO = 70;
+export const NIVEL_MEDIO = 40;
+export type Nivel = 'alto' | 'medio' | 'bajo';
+export function nivelPuntaje(score: number): Nivel {
+  if (score >= NIVEL_ALTO) return 'alto';
+  if (score >= NIVEL_MEDIO) return 'medio';
+  return 'bajo';
+}
+const TOPE_SIN_EXCLUYENTE = NIVEL_MEDIO - 1; // 39
+const TOPE_EXCLUYENTE_PARCIAL = NIVEL_ALTO - 1; // 69
 export const PESO_REQUISITOS = 0.7;
 export const PESO_EXCLUYENTE = 2;
 
@@ -53,10 +67,10 @@ export function calcularPuntaje(requisitos: ItemEvaluado[], tareas: ItemEvaluado
   const noCumple = excluyentes.find((r) => r.cumple === 'no');
   const parcial = excluyentes.find((r) => r.cumple === 'parcial');
   if (noCumple) {
-    tope = 39;
+    tope = TOPE_SIN_EXCLUYENTE;
     motivo = `No cumple un requisito excluyente: "${noCumple.texto}".`;
   } else if (parcial) {
-    tope = 69;
+    tope = TOPE_EXCLUYENTE_PARCIAL;
     motivo = `Cumple sólo parcialmente un requisito excluyente: "${parcial.texto}".`;
   }
   if (tope !== null) score = Math.min(score, tope);

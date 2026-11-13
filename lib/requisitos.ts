@@ -1,4 +1,5 @@
 import { obtenerPuesto, type Candidato, type Puesto } from '@/lib/db';
+import { MAX_REQUISITOS } from '@/lib/reglas';
 
 // ── Requisitos y tareas del puesto ───────────────────────────────────────────
 // Único lugar donde se arma lo que la IA evalúa de cada puesto:
@@ -11,7 +12,7 @@ export interface RequisitoPuesto {
   excluyente: boolean;
 }
 
-const MAX_ITEMS = 12;
+const MAX_ITEMS = MAX_REQUISITOS;
 
 /** Parte un texto libre ("a; b", una línea por ítem, viñetas) en ítems sueltos. */
 export function partirEnItems(texto: string | undefined | null): string[] {

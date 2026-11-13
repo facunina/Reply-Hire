@@ -87,7 +87,7 @@ JUSTIFICAN en el dossier: «foto» de nombre/email/teléfono/puesto en candidato
 
 ## Próximos pasos (en orden)
 
-0. Checklist punto por punto (en curso): 1 ✅ → **sigue el 7** (estados del panel desde `lib/estados.ts`, no repetir lógica) → 6 (usuario) → 8/9/10 (documento).
+0. Checklist punto por punto (en curso): 1 ✅ → 7 ✅ (reglas centralizadas: `lib/reglas.ts` transiciones/etapas/límites, `lib/estados.ts` nombres y colores de estados para equipo y candidato, `lib/puntaje.ts` niveles 70/40 y topes derivados; las pantallas no tienen reglas propias) → 6 (usuario) → 8/9/10 (documento).
 1. ~~Backup diario~~ HECHO y funcionando en GitHub Actions (primer run 2026-11-11 OK, descargado y abierto con la clave local). Scripts en `scripts/` (backup, abrir, restaurar con `--confirmar`); artifact cifrado, 30 días; secrets cargados por el usuario.
 2. Ambientes: DECISIÓN del usuario (2026-11-11): NO crear una base aparte; se mantiene una sola base y se **documenta** en el dossier (DEV = local, PROD = Vercel, QA = local antes del push; cómo se separaría al crecer: segundo proyecto Supabase + preview deployments de Vercel).
 3. Revisar en Vercel si quedaron las variables viejas `RECLUTADOR_*`/`ADMIN_*` y borrarlas.

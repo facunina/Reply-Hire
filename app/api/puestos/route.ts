@@ -3,6 +3,7 @@ import { guardarPuesto, obtenerPuestos, cambiarEstadoPuesto, emailsDeCuentas } f
 import { rolEquipoDesdeCookies, usuarioEquipoDesdeCookies } from '@/lib/auth-equipo';
 import { registrarEvento } from '@/lib/eventos';
 import { normalizarArea } from '@/lib/areas';
+import { MAX_REQUISITOS } from '@/lib/reglas';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -56,11 +57,11 @@ export async function POST(request: Request) {
     // Normaliza un campo opcional de texto a string recortado (o "").
     const limpiar = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
-    // Requisitos uno por uno, con su marca de excluyente (máx. 12). Es el
+    // Requisitos uno por uno, con su marca de excluyente (máx. MAX_REQUISITOS). Es el
     // ÚNICO lugar donde se guardan: el texto del portal se arma al mostrarlo.
     const listaReq = (Array.isArray(requisitos_lista) ? requisitos_lista : [])
       .filter((r: any) => r && typeof r.texto === "string" && r.texto.trim())
-      .slice(0, 12)
+      .slice(0, MAX_REQUISITOS)
       .map((r: any) => ({ texto: r.texto.trim().slice(0, 200), excluyente: !!r.excluyente }));
 
     const id = randomUUID();

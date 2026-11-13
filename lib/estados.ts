@@ -1,3 +1,20 @@
+// Único lugar con los nombres y colores de cada estado de una postulación.
+// Hay dos vistas del MISMO estado: la del equipo (detallada) y la del
+// candidato (más amable). Las transiciones entre estados están en lib/reglas.ts.
+
+/** Cómo ve el EQUIPO (panel del reclutador) cada estado. */
+export const ESTADO_EQUIPO: Record<string, { texto: string; clase: string }> = {
+  pendiente: { texto: "Pendiente de revisión", clase: "bg-amber-50 text-amber-700 border-amber-200" },
+  en_entrevista: { texto: "En entrevista", clase: "bg-blue-50 text-blue-700 border-blue-200" },
+  seleccionado: { texto: "Seleccionado", clase: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  rechazado_cv: { texto: "Rechazado (CV)", clase: "bg-rose-50 text-rose-700 border-rose-200" },
+  rechazado_entrevista: { texto: "Rechazado (entrevista)", clase: "bg-rose-50 text-rose-700 border-rose-200" },
+};
+
+export function estadoParaEquipo(estado: string): { texto: string; clase: string } {
+  return ESTADO_EQUIPO[estado] || { texto: estado, clase: "bg-slate-50 text-slate-700 border-slate-200" };
+}
+
 // Cómo se le muestra al CANDIDATO el estado de su postulación: una etiqueta y
 // un mensaje. Los dos rechazos se presentan igual: el candidato no necesita
 // saber en qué etapa se decidió.
