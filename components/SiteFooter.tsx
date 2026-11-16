@@ -11,6 +11,14 @@ export default function SiteFooter() {
         </p>
         <p>
           Tus datos y tu CV se usan únicamente para el proceso de selección.{" "}
+          <Link href="/privacidad" className="font-medium text-slate-700 underline hover:text-brand-700">
+            Privacidad
+          </Link>
+          {" · "}
+          <Link href="/terminos" className="font-medium text-slate-700 underline hover:text-brand-700">
+            Términos
+          </Link>
+          {" · "}
           <Link href="/login" className="font-medium text-slate-700 underline hover:text-brand-700">
             Acceso reclutadores
           </Link>
