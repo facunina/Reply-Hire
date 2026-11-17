@@ -73,6 +73,7 @@ Tablas (RLS activada **sin políticas**: la clave pública no lee nada; la app u
 **Correcciones manuales de datos (log):**
 - 2026-11-12: las 3 búsquedas viejas con requisitos en texto se pasaron a `requisitos_lista`; fortalezas/brechas/preguntas convertidas a jsonb.
 - 2026-11-17: «Instructor/a de Vela» seguía **abierta** con Joaquin seleccionado. Causa: se lo seleccionó el 08/11, antes de que existiera la regla «seleccionar cierra la búsqueda» (agregada el 10/11). Se cerró a mano. Se verificó que no queda ninguna otra búsqueda abierta con un seleccionado.
+- 2026-11-17 (para la presentación): eliminada «Ingeniero en IA» (con sus 2 postulaciones de prueba y CVs; quedó un evento de entrevista del 19/11 en el Google Calendar del usuario). Creadas 7 búsquedas de demo desde el panel: Docente de Programación SSr, Prof. de Educación Física Jr, Analista de Ecommerce Jr, Gerente de Marketing Sr, Analista de RRHH SSr, Desarrollador/a Backend Sr, Asistente Administrativo/a Contable Jr. Abiertas hoy: esas 7 + Analista de Datos Jr.
 
 ## Backup
 
