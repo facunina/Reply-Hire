@@ -48,6 +48,7 @@ export interface Candidato {
   entrevista_evento_id?: string;       // id del evento en Google Calendar (para reprogramar)
   entrevista_link?: string;            // enlace al evento en Google Calendar
   entrevista_meet?: string;            // enlace de Google Meet
+  aviso_cierre_a?: string | null;      // cuándo se le avisó que la búsqueda se cubrió con otra persona
   cv_texto?: string;
   cv_url?: string;
   score?: number;
@@ -92,6 +93,7 @@ const COLUMNAS = [
   'entrevista_evento_id',
   'entrevista_link',
   'entrevista_meet',
+  'aviso_cierre_a',
   'cv_texto',
   'cv_url',
   'score',
@@ -168,6 +170,7 @@ function aFila(c: Partial<Candidato>): Record<string, any> {
   if (c.entrevista_evento_id !== undefined) fila.entrevista_evento_id = c.entrevista_evento_id || '';
   if (c.entrevista_link !== undefined) fila.entrevista_link = c.entrevista_link || '';
   if (c.entrevista_meet !== undefined) fila.entrevista_meet = c.entrevista_meet || '';
+  if (c.aviso_cierre_a !== undefined) fila.aviso_cierre_a = c.aviso_cierre_a || null;
   if (c.cv_texto !== undefined) fila.cv_texto = c.cv_texto || '';
   if (c.cv_url !== undefined) fila.cv_url = c.cv_url || '';
   if (c.score !== undefined) {
@@ -223,6 +226,13 @@ export async function leerTodo(): Promise<any[]> {
 }
 
 /** Lista de candidatos lista para el dashboard (arrays deserializados). */
+/** Postulaciones de una búsqueda. */
+export async function obtenerCandidatosDelPuesto(puestoId: string): Promise<Candidato[]> {
+  const { data, error } = await getSupabase().from(TABLA).select('*').eq('puesto_id', puestoId);
+  if (error) throw new Error('No se pudieron leer las postulaciones de la búsqueda: ' + error.message);
+  return (data || []).map(deserializar);
+}
+
 export async function obtenerCandidatos(): Promise<Candidato[]> {
   const filas = await leerTodo();
   return filas.map(deserializar);

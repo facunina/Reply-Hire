@@ -6,7 +6,7 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 // Reglas de negocio: se definen una sola vez y las cumplen el panel y las APIs.
 import {
   puedeDecidir, enRevisionDeCV, enEtapaEntrevista, esEstadoFinal, rechazoSegunEtapa,
-  cierraLaBusqueda, MAX_REQUISITOS,
+  cierraLaBusqueda, quedaSinRespuesta, MAX_REQUISITOS,
 } from "@/lib/reglas";
 import { estadoParaEquipo } from "@/lib/estados";
 import { nivelPuntaje, type Nivel } from "@/lib/puntaje";
@@ -35,6 +35,7 @@ interface Candidato {
   entrevista_inicio?: string | null;
   entrevista_link?: string;
   entrevista_meet?: string;
+  aviso_cierre_a?: string | null;
   guardado?: boolean;
   creado_a?: string;
   fecha_postulacion: string;
@@ -506,12 +507,19 @@ export default function DashboardPage() {
     if (!seleccionado) return;
     // Al seleccionar a alguien, la búsqueda se cierra: ya se cubrió el puesto.
     const puestoDelCandidato = puestos.find((p) => esDelPuesto(seleccionado, p));
+    // Las demás personas de la búsqueda que quedaron sin respuesta (regla en lib/reglas.ts).
+    const sinRespuesta = puestoDelCandidato
+      ? candidatos.filter((c) => esDelPuesto(c, puestoDelCandidato) && quedaSinRespuesta(c, seleccionado.id)).length
+      : 0;
     if (
       cierraLaBusqueda(nuevoEstado) &&
       !window.confirm(
         `Vas a seleccionar a ${seleccionado.nombre}.` +
           (puestoDelCandidato && puestoDelCandidato.activo !== false
             ? `\n\nLa búsqueda "${puestoDelCandidato.nombre}" se va a cerrar: deja de verse en el portal y no recibe más postulaciones. Si necesitás más personas, la podés reabrir desde "Cerradas".`
+            : "") +
+          (sinRespuesta > 0
+            ? `\n\nA ${sinRespuesta} persona${sinRespuesta === 1 ? "" : "s"} que quedó sin respuesta se le${sinRespuesta === 1 ? "" : "s"} avisará por email que el puesto se cubrió.`
             : "")
       )
     ) {
@@ -540,6 +548,10 @@ export default function DashboardPage() {
           // La búsqueda pasa a "Cerradas": se sigue mostrando ahí, con el candidato abierto.
           setVista("cerradas");
           setMensajeOk(`Candidato seleccionado. La búsqueda "${cerrada.nombre}" quedó cerrada y ya no recibe postulaciones.`);
+        }
+        const avisados = Number(data.avisados || 0);
+        if (avisados > 0) {
+          setMensajeOk((m) => `${m} Se está avisando por email a ${avisados} persona${avisados === 1 ? "" : "s"} que quedó sin respuesta.`);
         }
       } else {
         setMensajeOk("Error: " + (data.error || "No se pudo actualizar el estado."));

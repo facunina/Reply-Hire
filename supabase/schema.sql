@@ -74,6 +74,8 @@ alter table public.candidatos add column if not exists entrevista_link text defa
 alter table public.candidatos add column if not exists entrevista_meet text default '';
 -- Evaluación requisito por requisito: { requisitos: [...], tareas: [...], puntaje: {...} } (lib/puntaje.ts)
 alter table public.candidatos add column if not exists evaluacion jsonb;
+-- Cuándo se le avisó por email que la búsqueda se cubrió con otra persona (lib/avisos.ts).
+alter table public.candidatos add column if not exists aviso_cierre_a timestamptz;
 create index if not exists candidatos_usuario_id_idx on public.candidatos (usuario_id);
 -- Una cuenta no puede postularse dos veces a la misma búsqueda (lo garantiza la
 -- base, no sólo la app). Las postulaciones viejas sin cuenta (NULL) no chocan.

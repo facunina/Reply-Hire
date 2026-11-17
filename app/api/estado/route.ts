@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
+import { candidatosSinRespuesta, avisarBusquedaCubierta } from '@/lib/avisos';
 import { actualizarCandidato, obtenerCandidato, obtenerPuesto, cambiarEstadoPuesto } from '@/lib/db';
 import { validarDecision, cierraLaBusqueda } from '@/lib/reglas';
 import { registrarEvento } from '@/lib/eventos';
@@ -56,7 +57,20 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, busquedaCerrada });
+    // A las demás personas de la búsqueda que quedaron sin respuesta se les
+    // avisa por email que el puesto se cubrió. Los emails salen DESPUÉS de
+    // responder (after), así seleccionar no se demora.
+    let avisados = 0;
+    if (estado === 'seleccionado' && candidato.puesto_id) {
+      const puestoId = candidato.puesto_id;
+      const nombrePuesto = busquedaCerrada?.nombre || (await obtenerPuesto(puestoId))?.nombre || candidato.puesto || 'la búsqueda';
+      avisados = (await candidatosSinRespuesta(puestoId, id)).length;
+      if (avisados > 0) {
+        after(() => avisarBusquedaCubierta(puestoId, nombrePuesto, id).then(() => undefined));
+      }
+    }
+
+    return NextResponse.json({ ok: true, busquedaCerrada, avisados });
 
   } catch (e: any) {
     console.error("Error en estado API:", e);

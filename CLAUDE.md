@@ -85,6 +85,13 @@ requisitos SÓLO en `requisitos_lista` (columnas `requisitos` y `salario` elimin
 JUSTIFICAN en el dossier: «foto» de nombre/email/teléfono/puesto en candidatos, `score` guardado
 (ordenar/métricas), `activo` + `cerrado_a` (historial).
 
+Aviso de búsqueda cubierta (2026-11-17): al SELECCIONAR a alguien, a las demás postulaciones
+de esa búsqueda sin decisión final se les manda un email (lib/avisos.ts, regla
+`quedaSinRespuesta` en lib/reglas.ts), una sola vez (`candidatos.aviso_cierre_a`), con after().
+El panel avisa cuántas personas recibirán el mail antes de confirmar. Probado con datos de prueba.
+Google Calendar: app de GCP pasada a «En producción» (ya no vence a los 7 días); token nuevo en
+.env.local y en Vercel. Páginas /privacidad y /terminos creadas (requisito de Google).
+
 ## Próximos pasos (en orden)
 
 0. Checklist punto por punto (en curso): 1 ✅ → 7 ✅ (reglas centralizadas: `lib/reglas.ts` transiciones/etapas/límites, `lib/estados.ts` nombres y colores de estados para equipo y candidato, `lib/puntaje.ts` niveles 70/40 y topes derivados; las pantallas no tienen reglas propias) → 6 (usuario) → 8/9/10 (documento).

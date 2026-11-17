@@ -88,6 +88,18 @@ export const MENSAJE_MAX = 1000;
 /** Cantidad máxima de requisitos por búsqueda. */
 export const MAX_REQUISITOS = 12;
 
+/**
+ * Cuando se selecciona a alguien, ¿esta otra postulación quedó sin respuesta y
+ * hay que avisarle que la búsqueda se cubrió? Sí, si todavía no tenía una
+ * decisión final y no se le avisó antes.
+ */
+export function quedaSinRespuesta(
+  c: { id: string; estado?: string; aviso_cierre_a?: string | null },
+  seleccionadoId: string
+): boolean {
+  return c.id !== seleccionadoId && !esEstadoFinal(c.estado) && !c.aviso_cierre_a;
+}
+
 /** Al seleccionar a alguien se cubrió el puesto: la búsqueda se cierra. */
 export function cierraLaBusqueda(nuevo: EstadoDecision): boolean {
   return nuevo === 'seleccionado';
